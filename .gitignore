@@ -35,3 +35,5 @@ conf/google/*.json
 
 # Venv
 venv_sic
+/demos/nao/movements/
+/demos/nao/motion_recorder_demo

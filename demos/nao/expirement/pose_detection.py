@@ -2,7 +2,7 @@ import cv2
 import mediapipe as mp
 from mediapipe.tasks.python import vision
 
-MODEL_PATH = "pose_landmarkers/pose_landmarker_full.task"
+MODEL_PATH = "../../../pose_landmarkers/pose_landmarker_full.task"
 
 BaseOptions = mp.tasks.BaseOptions
 PoseLandmarker = vision.PoseLandmarker
