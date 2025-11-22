@@ -2,6 +2,9 @@
 openai
 python-dotenv
 pydantic
+social-interaction-cloud
+social-interaction-cloud[face-detection]
+social-interaction-cloud[dialogflow-cx]
 
 # Simple audio (much easier than PyAudio!)
 sounddevice>=0.4.6
