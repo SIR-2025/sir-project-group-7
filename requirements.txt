@@ -1,0 +1,14 @@
+# Core
+openai
+python-dotenv
+pydantic
+
+# Simple audio (much easier than PyAudio!)
+sounddevice>=0.4.6
+soundfile>=0.12.1
+
+# Computer Vision
+mediapipe>=0.10.0
+opencv-python>=4.8.0
+numpy>=1.24.0
+
