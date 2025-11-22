@@ -35,3 +35,8 @@ conf/google/*.json
 
 # Venv
 venv_sic
+
+# Pycache stuff
+__pycache__/
+*.pyc
+*.pyo
