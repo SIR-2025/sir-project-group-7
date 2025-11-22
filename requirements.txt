@@ -6,7 +6,7 @@ social-interaction-cloud
 social-interaction-cloud[face-detection]
 social-interaction-cloud[dialogflow-cx]
 
-# Simple audio (much easier than PyAudio!)
+# Simple audio
 sounddevice>=0.4.6
 soundfile>=0.12.1
 
