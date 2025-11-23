@@ -1,0 +1,17 @@
+# Core
+openai
+python-dotenv
+pydantic
+social-interaction-cloud
+social-interaction-cloud[face-detection]
+social-interaction-cloud[dialogflow-cx]
+
+# Simple audio
+sounddevice>=0.4.6
+soundfile>=0.12.1
+
+# Computer Vision
+mediapipe>=0.10.0
+opencv-python>=4.8.0
+numpy>=1.24.0
+
