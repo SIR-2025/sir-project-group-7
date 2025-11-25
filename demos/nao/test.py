@@ -26,3 +26,5 @@ class NaoMicTest(SICApplication):
 
 if __name__ == "__main__":
     app = NaoMicTest()
+
+# To do after class, test worked first time but not second...see why
