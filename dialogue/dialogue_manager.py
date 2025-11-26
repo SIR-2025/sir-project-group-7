@@ -27,7 +27,6 @@ MAX_CONVERSATION_HISTORY = settings.max_conversation_history
 try:
     import sounddevice as sd
     import soundfile as sf
-
     SOUNDDEVICE_AVAILABLE = True
 except ImportError:
     SOUNDDEVICE_AVAILABLE = False
@@ -35,32 +34,32 @@ except ImportError:
 
 class DialogueManager:
     def __init__(
-            self,
-            nao=None,
-            use_local_mic=False,
-            camera_manager=None,
-            pose_analyzer=None,
-            system_prompt=None,
-            greeting_prompt_fn=None,
-            instruction_prompt_fn=None,
-            feedback_prompt_fn=None,
-            closing_prompt_fn=None
+        self, 
+        nao=None, 
+        use_local_mic=False,
+        camera_manager=None,
+        pose_analyzer=None,
+        system_prompt=None,
+        greeting_prompt_fn=None,
+        instruction_prompt_fn=None,
+        feedback_prompt_fn=None,
+        closing_prompt_fn=None
     ):
         if not OPENAI_API_KEY:
             print("ERROR: OPENAI_API_KEY not found in conf/.env")
             raise ValueError("OPENAI_API_KEY must be set in conf/.env")
-
+        
         self.client = OpenAI(api_key=OPENAI_API_KEY)
         self.nao = nao
         self.nao_mic = nao.mic if nao else None
         self.use_local_mic = use_local_mic
-
+        
         self.camera_manager = camera_manager
         self.pose_analyzer = pose_analyzer
-
+        
         if use_local_mic and not SOUNDDEVICE_AVAILABLE:
             raise ImportError("Install: pip install sounddevice soundfile")
-
+        
         if use_local_mic:
             print("Using LAPTOP microphone")
         elif self.nao_mic:
@@ -161,39 +160,285 @@ class DialogueManager:
 
     def _record_from_nao_mic(self, duration):
         try:
-            import wave
             import io
-
+            import wave
+            import time
+            import threading
+            
             print(f"Recording from NAO for {duration} seconds...")
-
+            
             audio_chunks = []
-            num_samples = int(16000 * duration)
-            samples_recorded = 0
-
-            while samples_recorded < num_samples:
-                chunk = self.nao_mic.read()
-                if chunk:
-                    audio_chunks.append(chunk)
-                    samples_recorded += len(chunk) // 2
-
-            audio_data = b''.join(audio_chunks)
-
+            recording_lock = threading.Lock()
+            recording_active = threading.Event()
+            recording_active.set()
+            
+            def on_audio_message(message):
+                """
+                Callback that receives AudioMessage from NAO microphone
+                
+                AudioMessage has:
+                - waveform: bytearray of audio data
+                - sample_rate: 16000
+                """
+                if not recording_active.is_set():
+                    return
+                    
+                with recording_lock:
+                    if hasattr(message, 'waveform') and message.waveform:
+                        audio_chunks.append(bytes(message.waveform))
+            
+            self.nao_mic.register_callback(on_audio_message)
+            
+            time.sleep(duration)
+            
+            recording_active.clear()
+            
+            time.sleep(0.1)
+            
+            with recording_lock:
+                if not audio_chunks:
+                    print("No audio chunks received from NAO microphone")
+                    return None
+                
+                audio_bytes = b''.join(audio_chunks)
+            
+            print(f"Received {len(audio_chunks)} chunks, {len(audio_bytes)} bytes total")
+            
             buffer = io.BytesIO()
             with wave.open(buffer, 'wb') as wf:
                 wf.setnchannels(1)
                 wf.setsampwidth(2)
                 wf.setframerate(16000)
-                wf.writeframes(audio_data)
-
+                wf.writeframes(audio_bytes)
+            
             buffer.seek(0)
             buffer.name = "nao_recording.wav"
-
-            print("NAO recording complete")
+            
+            print(f"NAO recording complete - {len(audio_bytes)} bytes")
             return buffer
-
+            
         except Exception as e:
             print(f"NAO recording error: {e}")
+            import traceback
+            traceback.print_exc()
             return None
+
+    def listen_until_silence(self, max_duration=30.0, silence_threshold=0.01, silence_duration=1.5):
+        """
+        Listen until person stops speaking (detects silence)
+        """
+        try:
+            if self.use_local_mic:
+                audio_buffer = self._record_until_silence_local(
+                    max_duration, silence_threshold, silence_duration
+                )
+            elif self.nao_mic:
+                audio_buffer = self._record_until_silence_nao(
+                    max_duration, silence_threshold, silence_duration
+                )
+            else:
+                print("No microphone configured")
+                return None
+            
+            if not audio_buffer:
+                return None
+            
+            return self._transcribe_audio_buffer(audio_buffer)
+            
+        except Exception as e:
+            print(f"Listen error: {e}")
+            return None
+
+    def _record_until_silence_local(self, max_duration, silence_threshold, silence_duration):
+        """
+        Record from laptop mic until silence detected
+        """
+        try:
+            import numpy as np
+            import io
+            
+            print(f"Listening... (speak when ready, will stop after {silence_duration}s of silence)")
+            
+            sample_rate = 16000
+            chunk_duration = 0.1  # 100ms chunks
+            chunk_samples = int(sample_rate * chunk_duration)
+            
+            all_chunks = []
+            silence_chunks = 0
+            silence_chunks_needed = int(silence_duration / chunk_duration)
+            
+            max_chunks = int(max_duration / chunk_duration)
+            chunks_recorded = 0
+            
+            stream = sd.InputStream(
+                samplerate=sample_rate,
+                channels=1,
+                dtype='int16'
+            )
+            
+            with stream:
+                while chunks_recorded < max_chunks:
+                    chunk, _ = stream.read(chunk_samples)
+                    all_chunks.append(chunk)
+                    chunks_recorded += 1
+                    
+                    # Calculate audio level (RMS)
+                    audio_level = np.sqrt(np.mean(chunk.astype(float)**2)) / 32768.0
+                    
+                    if audio_level < silence_threshold:
+                        silence_chunks += 1
+                        if silence_chunks >= silence_chunks_needed:
+                            print(f"\n✓ Silence detected after {chunks_recorded * chunk_duration:.1f}s")
+                            break
+                    else:
+                        silence_chunks = 0  # Reset silence counter
+                        print(".", end="", flush=True)  # Visual feedback
+            
+            if not all_chunks:
+                print("\nNo audio recorded")
+                return None
+            
+            # Combine all chunks
+            audio_data = np.concatenate(all_chunks)
+            
+            print(f"Recording complete ({len(audio_data) / sample_rate:.1f}s)")
+            
+            # Save to buffer
+            buffer = io.BytesIO()
+            sf.write(buffer, audio_data, sample_rate, format='WAV')
+            buffer.seek(0)
+            buffer.name = "recording.wav"
+            
+            return buffer
+            
+        except Exception as e:
+            print(f"Recording error: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+    def _record_until_silence_nao(self, max_duration, silence_threshold, silence_duration):
+        """
+        Record from NAO mic until silence detected
+        """
+        try:
+            import io
+            import wave
+            import time
+            import threading
+            import numpy as np
+            
+            print(f"Listening... (speak when ready, will stop after {silence_duration}s of silence)")
+            
+            # Storage for audio chunks
+            audio_chunks = []
+            recording_lock = threading.Lock()
+            recording_active = threading.Event()
+            recording_active.set()
+            
+            silence_time = 0
+            last_audio_time = time.time()
+            has_speech = False
+            
+            def on_audio_message(message):
+                nonlocal silence_time, last_audio_time, has_speech
+                
+                if not recording_active.is_set():
+                    return
+                
+                with recording_lock:
+                    if hasattr(message, 'waveform') and message.waveform:
+                        audio_chunk = bytes(message.waveform)
+                        audio_chunks.append(audio_chunk)
+                        
+                        # Calculate audio level
+                        audio_array = np.frombuffer(audio_chunk, dtype=np.int16)
+                        audio_level = np.sqrt(np.mean(audio_array.astype(float)**2)) / 32768.0
+                        
+                        if audio_level > silence_threshold:
+                            # Speech detected
+                            has_speech = True
+                            last_audio_time = time.time()
+                            silence_time = 0
+                            print(".", end="", flush=True)
+                        else:
+                            # Silence
+                            if has_speech:
+                                silence_time = time.time() - last_audio_time
+            
+            # Register callback
+            self.nao_mic.register_callback(on_audio_message)
+            
+            # Monitor for silence
+            start_time = time.time()
+            while (time.time() - start_time) < max_duration:
+                time.sleep(0.1)
+                
+                with recording_lock:
+                    if has_speech and silence_time >= silence_duration:
+                        print(f"\n✓ Silence detected after {time.time() - start_time:.1f}s")
+                        break
+            
+            # Stop recording
+            recording_active.clear()
+            time.sleep(0.1)
+            
+            # Check if we got audio
+            with recording_lock:
+                if not audio_chunks:
+                    print("\nNo audio chunks received")
+                    return None
+                
+                audio_bytes = b''.join(audio_chunks)
+            
+            print(f"Recording complete ({len(audio_chunks)} chunks, {len(audio_bytes)} bytes)")
+            
+            # Create WAV file
+            buffer = io.BytesIO()
+            with wave.open(buffer, 'wb') as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)
+                wf.setframerate(16000)
+                wf.writeframes(audio_bytes)
+            
+            buffer.seek(0)
+            buffer.name = "nao_recording.wav"
+            
+            return buffer
+            
+        except Exception as e:
+            print(f"NAO recording error: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+    def listen_and_respond_auto(self, max_duration=30.0, silence_threshold=0.01, silence_duration=1.5):
+        """
+        Listen until silence, then automatically generate and return response
+        """
+        print("\n[AUTO-LISTENING MODE]")
+        
+        user_input = self.listen_until_silence(
+            max_duration=max_duration,
+            silence_threshold=silence_threshold,
+            silence_duration=silence_duration
+        )
+        
+        result = {
+            'user_input': user_input,
+            'response': None,
+            'detected': user_input is not None
+        }
+        
+        if user_input:
+            print(f"Transcribed: '{user_input}'")
+            response = self._get_response(user_input)
+            result['response'] = response
+            print(f"Generated response")
+        else:
+            print("No speech detected")
+        
+        return result
 
     def _transcribe_audio_buffer(self, audio_buffer):
         try:
