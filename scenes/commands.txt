@@ -1,0 +1,11 @@
+# Laptop only
+python scene_manager.py --mode laptop --mic laptop --camera local
+
+# NAO with laptop mic and iPhone camera:
+python scene_manager.py --mode nao --mic laptop --camera local
+
+# NAO with NAO mic and iPhone camera
+python scene_manager.py --mode nao --mic nao --camera local
+
+# Full nao mode
+python scene_manager.py --mode nao --mic nao --camera nao
