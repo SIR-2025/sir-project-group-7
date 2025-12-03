@@ -4,8 +4,12 @@ from mediapipe.tasks.python import vision
 import numpy as np
 from pathlib import Path
 from typing import Optional, Tuple, Dict
+import sys
 
-MODEL_PATH = r"../pose_landmarkers/pose_landmarker_full.task"
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+MODEL_PATH = f"{project_root}/pose_landmarkers/pose_landmarker_full.task"
 
 POSE_CONNECTIONS = frozenset([
     (0, 1), (1, 2), (2, 3), (3, 7), (0, 4), (4, 5), (5, 6), (6, 8),

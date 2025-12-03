@@ -1,6 +1,12 @@
 from openai import OpenAI
 from typing import Dict, Any, Optional, Callable
 import time
+import base64
+import cv2
+import io
+import wave
+import threading
+import numpy as np
 from pathlib import Path
 from utils import get_settings
 from .prompts import (
@@ -10,8 +16,6 @@ from .prompts import (
     get_feedback_prompt as default_feedback_prompt,
     get_closing_prompt as default_closing_prompt
 )
-import base64
-import cv2
 
 settings = get_settings()
 
@@ -89,10 +93,91 @@ class DialogueManager:
         self.use_local_mic = False
         print("Switched to NAO microphone")
 
-    def set_system_prompt(self, system_prompt):
-        self.system_prompt = system_prompt
-        self._initialize_conversation()
-        print("System prompt updated")
+    def listen_for_any_speech(self, max_duration=5.0, silence_threshold=0.04):
+        """Quick speech detection without transcription"""
+        try:
+            if self.use_local_mic:
+                return self._detect_speech_local(max_duration, silence_threshold)
+            else:
+                return self._detect_speech_nao(max_duration, silence_threshold)
+        except Exception as e:
+            print(f"Error in speech detection: {e}")
+            return False
+    
+    def _detect_speech_local(self, max_duration, silence_threshold):
+        """Quick local speech detection without transcription"""
+        try:
+            print("Listening for speech...")
+            
+            sample_rate = 16000
+            chunk_duration = 0.1
+            chunk_samples = int(sample_rate * chunk_duration)
+            max_chunks = int(max_duration / chunk_duration)
+            
+            stream = sd.InputStream(samplerate=sample_rate, channels=1, dtype='int16')
+            
+            with stream:
+                for i in range(max_chunks):
+                    chunk, _ = stream.read(chunk_samples)
+                    audio_level = np.sqrt(np.mean(chunk.astype(float)**2)) / 32768.0
+                    
+                    if audio_level > silence_threshold:
+                        print("Speech detected")
+                        return True
+                    
+                    if i % 10 == 0:
+                        print(".", end="", flush=True)
+            
+            print("\nNo speech detected")
+            return False
+            
+        except Exception as e:
+            print(f"Error: {e}")
+            return False
+    
+    def _detect_speech_nao(self, max_duration, silence_threshold):
+        """Quick NAO speech detection without transcription"""
+        try:
+            print("Listening for speech...")
+            
+            speech_detected = [False]
+            recording_active = threading.Event()
+            recording_active.set()
+            
+            def on_audio_message(message):
+                if not recording_active.is_set():
+                    return
+                
+                if hasattr(message, 'waveform') and message.waveform:
+                    audio_chunk = bytes(message.waveform)
+                    audio_array = np.frombuffer(audio_chunk, dtype=np.int16)
+                    audio_level = np.sqrt(np.mean(audio_array.astype(float)**2)) / 32768.0
+                    
+                    if audio_level > silence_threshold:
+                        speech_detected[0] = True
+                        recording_active.clear()
+            
+            self.nao_mic.register_callback(on_audio_message)
+            
+            start_time = time.time()
+            while (time.time() - start_time) < max_duration and recording_active.is_set():
+                time.sleep(0.1)
+                if int((time.time() - start_time) * 10) % 10 == 0:
+                    print(".", end="", flush=True)
+            
+            recording_active.clear()
+            time.sleep(0.1)
+            
+            if speech_detected[0]:
+                print("\nSpeech detected")
+                return True
+            else:
+                print("\nNo speech detected")
+                return False
+                
+        except Exception as e:
+            print(f"Error: {e}")
+            return False
 
     def set_greeting_prompt_fn(self, prompt_fn):
         self.greeting_prompt_fn = prompt_fn
@@ -146,7 +231,6 @@ class DialogueManager:
 
             print("Recording complete")
 
-            import io
             buffer = io.BytesIO()
             sf.write(buffer, audio_data, 16000, format='WAV')
             buffer.seek(0)
@@ -160,11 +244,6 @@ class DialogueManager:
 
     def _record_from_nao_mic(self, duration):
         try:
-            import io
-            import wave
-            import time
-            import threading
-            
             print(f"Recording from NAO for {duration} seconds...")
             
             audio_chunks = []
@@ -173,13 +252,6 @@ class DialogueManager:
             recording_active.set()
             
             def on_audio_message(message):
-                """
-                Callback that receives AudioMessage from NAO microphone
-                
-                AudioMessage has:
-                - waveform: bytearray of audio data
-                - sample_rate: 16000
-                """
                 if not recording_active.is_set():
                     return
                     
@@ -223,10 +295,8 @@ class DialogueManager:
             traceback.print_exc()
             return None
 
-    def listen_until_silence(self, max_duration=30.0, silence_threshold=0.01, silence_duration=1.5):
-        """
-        Listen until person stops speaking (detects silence)
-        """
+    def listen_until_silence(self, max_duration=30.0, silence_threshold=0.02, silence_duration=1.5):
+        """Listen until person stops speaking"""
         try:
             if self.use_local_mic:
                 audio_buffer = self._record_until_silence_local(
@@ -250,17 +320,12 @@ class DialogueManager:
             return None
 
     def _record_until_silence_local(self, max_duration, silence_threshold, silence_duration):
-        """
-        Record from laptop mic until silence detected
-        """
+        """Record from laptop mic until silence detected"""
         try:
-            import numpy as np
-            import io
-            
-            print(f"Listening... (speak when ready, will stop after {silence_duration}s of silence)")
+            print(f"Listening... (waiting for speech to start)")
             
             sample_rate = 16000
-            chunk_duration = 0.1  # 100ms chunks
+            chunk_duration = 0.1
             chunk_samples = int(sample_rate * chunk_duration)
             
             all_chunks = []
@@ -269,6 +334,8 @@ class DialogueManager:
             
             max_chunks = int(max_duration / chunk_duration)
             chunks_recorded = 0
+            
+            speech_started = False
             
             stream = sd.InputStream(
                 samplerate=sample_rate,
@@ -279,31 +346,44 @@ class DialogueManager:
             with stream:
                 while chunks_recorded < max_chunks:
                     chunk, _ = stream.read(chunk_samples)
-                    all_chunks.append(chunk)
                     chunks_recorded += 1
                     
-                    # Calculate audio level (RMS)
                     audio_level = np.sqrt(np.mean(chunk.astype(float)**2)) / 32768.0
+                    
+                    if not speech_started:
+                        if audio_level > silence_threshold:
+                            speech_started = True
+                            print("\nSpeech detected! Now recording until silence...")
+                            all_chunks.append(chunk)
+                            print(".", end="", flush=True)
+                        else:
+                            if chunks_recorded % 10 == 0:
+                                print(".", end="", flush=True)
+                        continue
+                    
+                    all_chunks.append(chunk)
                     
                     if audio_level < silence_threshold:
                         silence_chunks += 1
                         if silence_chunks >= silence_chunks_needed:
-                            print(f"\n✓ Silence detected after {chunks_recorded * chunk_duration:.1f}s")
+                            print(f"\nSilence detected after {chunks_recorded * chunk_duration:.1f}s")
                             break
                     else:
-                        silence_chunks = 0  # Reset silence counter
-                        print(".", end="", flush=True)  # Visual feedback
+                        silence_chunks = 0
+                        print(".", end="", flush=True)
+            
+            if not speech_started:
+                print("\nNo speech detected within timeout")
+                return None
             
             if not all_chunks:
                 print("\nNo audio recorded")
                 return None
             
-            # Combine all chunks
             audio_data = np.concatenate(all_chunks)
             
             print(f"Recording complete ({len(audio_data) / sample_rate:.1f}s)")
             
-            # Save to buffer
             buffer = io.BytesIO()
             sf.write(buffer, audio_data, sample_rate, format='WAV')
             buffer.seek(0)
@@ -318,19 +398,10 @@ class DialogueManager:
             return None
 
     def _record_until_silence_nao(self, max_duration, silence_threshold, silence_duration):
-        """
-        Record from NAO mic until silence detected
-        """
+        """Record from NAO mic until silence detected"""
         try:
-            import io
-            import wave
-            import time
-            import threading
-            import numpy as np
+            print(f"Listening... (waiting for speech to start)")
             
-            print(f"Listening... (speak when ready, will stop after {silence_duration}s of silence)")
-            
-            # Storage for audio chunks
             audio_chunks = []
             recording_lock = threading.Lock()
             recording_active = threading.Event()
@@ -338,10 +409,10 @@ class DialogueManager:
             
             silence_time = 0
             last_audio_time = time.time()
-            has_speech = False
+            speech_started = False
             
             def on_audio_message(message):
-                nonlocal silence_time, last_audio_time, has_speech
+                nonlocal silence_time, last_audio_time, speech_started
                 
                 if not recording_active.is_set():
                     return
@@ -349,42 +420,48 @@ class DialogueManager:
                 with recording_lock:
                     if hasattr(message, 'waveform') and message.waveform:
                         audio_chunk = bytes(message.waveform)
-                        audio_chunks.append(audio_chunk)
                         
-                        # Calculate audio level
                         audio_array = np.frombuffer(audio_chunk, dtype=np.int16)
                         audio_level = np.sqrt(np.mean(audio_array.astype(float)**2)) / 32768.0
                         
+                        if not speech_started:
+                            if audio_level > silence_threshold:
+                                speech_started = True
+                                print("\nSpeech detected! Now recording until silence...")
+                                audio_chunks.append(audio_chunk)
+                                last_audio_time = time.time()
+                                silence_time = 0
+                                print(".", end="", flush=True)
+                            return
+                        
+                        audio_chunks.append(audio_chunk)
+                        
                         if audio_level > silence_threshold:
-                            # Speech detected
-                            has_speech = True
                             last_audio_time = time.time()
                             silence_time = 0
                             print(".", end="", flush=True)
                         else:
-                            # Silence
-                            if has_speech:
-                                silence_time = time.time() - last_audio_time
+                            silence_time = time.time() - last_audio_time
             
-            # Register callback
             self.nao_mic.register_callback(on_audio_message)
             
-            # Monitor for silence
             start_time = time.time()
             while (time.time() - start_time) < max_duration:
                 time.sleep(0.1)
                 
                 with recording_lock:
-                    if has_speech and silence_time >= silence_duration:
-                        print(f"\n✓ Silence detected after {time.time() - start_time:.1f}s")
+                    if speech_started and silence_time >= silence_duration:
+                        print(f"\nSilence detected after {time.time() - start_time:.1f}s")
                         break
             
-            # Stop recording
             recording_active.clear()
             time.sleep(0.1)
             
-            # Check if we got audio
             with recording_lock:
+                if not speech_started:
+                    print("\nNo speech detected within timeout")
+                    return None
+                
                 if not audio_chunks:
                     print("\nNo audio chunks received")
                     return None
@@ -393,7 +470,6 @@ class DialogueManager:
             
             print(f"Recording complete ({len(audio_chunks)} chunks, {len(audio_bytes)} bytes)")
             
-            # Create WAV file
             buffer = io.BytesIO()
             with wave.open(buffer, 'wb') as wf:
                 wf.setnchannels(1)
@@ -412,10 +488,8 @@ class DialogueManager:
             traceback.print_exc()
             return None
 
-    def listen_and_respond_auto(self, max_duration=30.0, silence_threshold=0.01, silence_duration=1.5):
-        """
-        Listen until silence, then automatically generate and return response
-        """
+    def listen_and_respond_auto(self, max_duration=30.0, silence_threshold=0.02, silence_duration=1.5):
+        """Listen until silence, then automatically generate and return response"""
         print("\n[AUTO-LISTENING MODE]")
         
         user_input = self.listen_until_silence(
@@ -489,9 +563,7 @@ class DialogueManager:
         return self._get_response(prompt, max_tokens=40, context="closing")
 
     def describe_image(self, custom_prompt=None):
-        """
-        Capture image and get AI description
-        """
+        """Capture image and get AI description"""
         if not self.camera_manager:
             print("No camera manager configured")
             return None
@@ -505,9 +577,7 @@ class DialogueManager:
         return self._get_vision_response(img_base64, prompt)
 
     def analyze_exercise_form_visual(self, exercise_name):
-        """
-        Capture image and analyze exercise form using vision only
-        """
+        """Capture image and analyze exercise form using vision only"""
         if not self.camera_manager:
             print("No camera manager configured")
             return None
@@ -525,9 +595,7 @@ Keep response under 20 words."""
         return self._get_vision_response(img_base64, prompt)
 
     def answer_visual_question(self, question):
-        """
-        Answer a question about what the camera sees
-        """
+        """Answer a question about what the camera sees"""
         if not self.camera_manager:
             print("No camera manager configured")
             return None
@@ -539,9 +607,7 @@ Keep response under 20 words."""
         return self._get_vision_response(img_base64, question)
 
     def get_pose_feedback(self, exercise_name, show_frame=False):
-        """
-        Get comprehensive feedback combining MediaPipe + GPT Vision
-        """
+        """Get comprehensive feedback combining MediaPipe + GPT Vision"""
         if not self.pose_analyzer:
             print("No pose analyzer configured")
             return None
@@ -582,9 +648,7 @@ Looking at their form, give ONE specific, encouraging correction. Max 20 words."
         return technical_feedback
 
     def _generate_technical_feedback(self, analysis):
-        """
-        Generate technical feedback from pose analysis
-        """
+        """Generate technical feedback from pose analysis"""
         accuracy = analysis['overall_accuracy']
 
         if accuracy >= 85:
@@ -607,9 +671,7 @@ Looking at their form, give ONE specific, encouraging correction. Max 20 words."
         return f"{accuracy:.1f}% accuracy. Good form!"
 
     def _get_vision_response(self, img_base64, prompt, max_tokens=150):
-        """
-        Get AI response based on image
-        """
+        """Get AI response based on image"""
         try:
             print(f"Sending vision request to {OPENAI_MODEL}...")
 
