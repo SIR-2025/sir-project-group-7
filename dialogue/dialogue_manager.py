@@ -488,9 +488,8 @@ class DialogueManager:
             traceback.print_exc()
             return None
 
-    def listen_and_respond_auto(self, max_duration=30.0, silence_threshold=0.02, silence_duration=1.5):
-        """Listen until silence, then automatically generate and return response"""
-        print("\n[AUTO-LISTENING MODE]")
+    def listen_and_respond_auto(self, max_duration=30.0, silence_threshold=0.02, silence_duration=1.5, scene_context=""):
+        print("\nAUTO-LISTENING MODE")
         
         user_input = self.listen_until_silence(
             max_duration=max_duration,
@@ -506,13 +505,60 @@ class DialogueManager:
         
         if user_input:
             print(f"Transcribed: '{user_input}'")
-            response = self._get_response(user_input)
+            
+            if scene_context:
+                response = self.get_contextual_response(user_input, scene_context)
+            else:
+                response = self._get_response(user_input)
+            
             result['response'] = response
             print(f"Generated response")
         else:
             print("No speech detected")
         
         return result
+
+    def get_contextual_response(self, user_input="", scene_context="", max_tokens=MAX_TOKENS):
+        """
+        Get a response with scene context, even without user input.
+        """
+        try:
+            if user_input and scene_context:
+                message = f"[Context: {scene_context}]\nPerson said: \"{user_input}\"\n\nRespond in character."
+            elif scene_context:
+                message = f"[Context: {scene_context}]\n\nGenerate dialogue in character."
+            elif user_input:
+                message = user_input
+            else:
+                return "Let's continue!"
+            
+            self.conversation_history.append({
+                "role": "user",
+                "content": message
+            })
+            
+            print(f"Sending contextual request to {OPENAI_MODEL}...")
+            
+            response = self.client.chat.completions.create(
+                model=OPENAI_MODEL,
+                messages=self.conversation_history,
+                max_tokens=max_tokens,
+                temperature=TEMPERATURE
+            )
+            
+            assistant_message = response.choices[0].message.content
+            
+            self.conversation_history.append({
+                "role": "assistant",
+                "content": assistant_message
+            })
+            
+            self._trim_history()
+            return assistant_message
+            
+        except Exception as e:
+            print(f"{OPENAI_MODEL} error in contextual response: {e}")
+            return "Let's continue!"
 
     def _transcribe_audio_buffer(self, audio_buffer):
         try:
