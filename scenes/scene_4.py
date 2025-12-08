@@ -9,6 +9,10 @@ import time
 
 
 class Scene4(BaseScene):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.set_scene_context(scene_number=4)
+    
     def run(self):
         print("SCENE 4: SQUATS - THE BONDING BEGINS")
         
@@ -32,20 +36,25 @@ class Scene4(BaseScene):
                 
                 # ACT 1: Introduction
                 if self.scene_step == 0:
-                    self.nao_speak("Excellent. Our first exercise is the biomechanical marvel known as the... squat.",
-                                  animation="animations/Stand/Gestures/Explain_1", wait=True)
+                    intro = self.generate_speech(
+                        "Announce the first exercise is the squat. Call it a biomechanical marvel.",
+                        fallback_text="Excellent. Our first exercise is the biomechanical marvel known as the... squat."
+                    )
+                    self.nao_speak(intro, animation="animations/Stand/Gestures/Explain_1", wait=True)
                     self.scene_step = 1
                     self.step_start_time = current_time
                 
                 elif self.scene_step == 1 and current_time - self.step_start_time > 5:
-                    self.nao_speak("I will now demonstrate a poor representation of it because I'm not as flexible as you.",
-                                  wait=True)
+                    demo_warning = self.generate_speech(
+                        "Tell them you'll demonstrate but you're not as flexible as them.",
+                        fallback_text="I will now demonstrate a poor representation of it because I'm not as flexible as you."
+                    )
+                    self.nao_speak(demo_warning, wait=True)
                     self.scene_step = 2
                     self.step_start_time = current_time
                 
-                # ACT 2: NAO attempts squat (sitting motion)
+                # ACT 2: NAO attempts squat
                 elif self.scene_step == 2 and current_time - self.step_start_time > 4:
-                    # NAO sits down (squat attempt)
                     print("[NAO SITS DOWN - 'squat attempt']")
                     if self.use_nao and self.nao:
                         from sic_framework.devices.common_naoqi.naoqi_motion import NaoPostureRequest
@@ -56,7 +65,6 @@ class Scene4(BaseScene):
                     self.step_start_time = current_time
                 
                 elif self.scene_step == 21 and current_time - self.step_start_time > 3:
-                    # NAO stands back up
                     print("[NAO STANDS BACK UP]")
                     if self.use_nao and self.nao:
                         from sic_framework.devices.common_naoqi.naoqi_motion import NaoPostureRequest
@@ -68,57 +76,104 @@ class Scene4(BaseScene):
                 
                 # ACT 3: Request squats
                 elif self.scene_step == 3 and current_time - self.step_start_time > 2:
-                    self.nao_speak("So this is the best I can do but you can surely do it better, so please perform three squats.",
-                                  wait=True)
+                    request = self.generate_speech(
+                        "Admit that's the best you can do but they can do better. Request three squats.",
+                        fallback_text="So this is the best I can do but you can surely do it better, so please perform three squats."
+                    )
+                    self.nao_speak(request, wait=True)
                     self.scene_step = 4
                     self.step_start_time = current_time
                 
                 # ACT 4: Wait for first squat
-                # Person says "That was not a great squat but I appreciate the effort Mr. Nao. (performs squat) One!"
                 elif self.scene_step == 4 and current_time - self.step_start_time > 5:
-                    self.start_listening()
+                    self.start_listening("Person might comment on your squat, then do their first squat and say 'One'.")
                     self.scene_step = 41
                 
                 elif self.scene_step == 41 and self.is_listening_complete():
-                    response = self.get_listen_result()
-                    # Listen for full response or just "one"
-                    if response and ("one" in response.lower() or "1" in response):
+                    response = self.get_user_input()
+                    if response and ("one" in response.lower() or "1" in response or "won" in response.lower()):
                         squat_count = 1
+                        print(f"[Squat #{squat_count} detected]")
+                        
                         self.nao_speak("Nice, good attempt!", wait=True)
                         self.scene_step = 5
-                    self.step_start_time = current_time
+                        self.step_start_time = current_time
+                    else:
+                        print(f"[Did not detect 'one' in: '{response}' - asking for repeat...]")
+                        
+                        missed = self.generate_speech(
+                            "You didn't see the squat properly. Ask them to repeat squat number one and say 'one' when done. Be slightly awkward but professional.",
+                            fallback_text="Sorry, I didn't quite catch that. Can you repeat squat one and say 'one' when you're done?"
+                        )
+                        self.nao_speak(missed, wait=True)
+                        
+                        self.scene_step = 4
+                        self.step_start_time = current_time
                 
                 # ACT 5: Wait for second squat - "Two!"
                 elif self.scene_step == 5 and current_time - self.step_start_time > 3:
-                    self.start_listening()
+                    self.start_listening("Person doing second squat, will say 'Two'.")
                     self.scene_step = 51
                 
                 elif self.scene_step == 51 and self.is_listening_complete():
-                    response = self.get_listen_result()
-                    if response and ("two" in response.lower() or "2" in response):
+                    response = self.get_user_input()
+                    if response and ("two" in response.lower() or "2" in response or 
+                                    "too" in response.lower() or "to" in response.lower() or 
+                                    "do" in response.lower() or "tu" in response.lower()):
                         squat_count = 2
-                        self.nao_speak("Wow what an improvement compared to mine!",
-                                      wait=True)
+                        print(f"[Squat #{squat_count} detected]")
+                        
+                        self.nao_speak("Wow what an improvement compared to mine!", wait=True)
                         self.scene_step = 6
-                    self.step_start_time = current_time
+                        self.step_start_time = current_time
+                    else:
+                        print(f"[Did not detect 'two' in: '{response}' - asking for repeat...]")
+                        
+                        missed = self.generate_speech(
+                            "You didn't catch squat number two. Ask them to do it again and say 'two' when done. Sound slightly embarrassed about missing it.",
+                            fallback_text="Oops, my sensors must have glitched. Can you do squat two again and say 'two' clearly?"
+                        )
+                        self.nao_speak(missed, wait=True)
+                        
+                        self.scene_step = 5
+                        self.step_start_time = current_time
                 
                 # ACT 6: Wait for third squat - "Three!"
                 elif self.scene_step == 6 and current_time - self.step_start_time > 3:
-                    self.start_listening()
+                    self.start_listening("Person doing third squat, will say 'Three'.")
                     self.scene_step = 61
-                
+
                 elif self.scene_step == 61 and self.is_listening_complete():
-                    response = self.get_listen_result()
-                    if response and ("three" in response.lower() or "3" in response):
+                    response = self.get_user_input()
+
+                    if response and ("three" in response.lower() or "3" in response or 
+                                    "tree" in response.lower() or "free" in response.lower() or 
+                                    "thee" in response.lower()):
                         squat_count = 3
-                        self.nao_speak("Great job! You look like you do this quite often. Sometimes I question why I do this.",
-                                      wait=True)
+                        print(f"[Squat #{squat_count} detected]")
+                        
+                        if self.use_nao and self.nao:
+                            self.nao_animate("animations/Stand/Negation/NAO/Center_Neutral_NEG_04")
+                        
+                        self.nao_speak("Great job! You look like you do this quite often. Sometimes I question why I do this.", 
+                                    wait=True)
                         self.scene_step = 7
-                    self.step_start_time = current_time
+                        self.step_start_time = current_time
+                    else:
+                        print(f"[Did not detect 'three' in: '{response}' - retrying...]")
+                        
+                        missed = self.generate_speech(
+                            "You missed the final squat. Ask them to repeat squat three and announce 'three' when finished. Act frustrated with your own sensors.",
+                            fallback_text="My bad! I think I blinked. One more time - squat three, and shout 'three' when you finish!"
+                        )
+                        self.nao_speak(missed, wait=True)
+                        
+                        self.scene_step = 6
+                        self.step_start_time = current_time
                 
                 # ACT 7: Listen for trainee question
                 elif self.scene_step == 7 and current_time - self.step_start_time > 5:
-                    self.start_listening()
+                    self.start_listening("Person might ask a question about breaking in or training.")
                     self.scene_step = 71
                 
                 elif self.scene_step == 71 and self.is_listening_complete():
@@ -127,16 +182,17 @@ class Scene4(BaseScene):
                 
                 # ACT 8: Move on to push-ups
                 elif self.scene_step == 8 and current_time - self.step_start_time > 1:
-                    self.nao_speak("Uhmmm... let's move on. How about we do some push-ups now, are you ready?",
-                                  wait=True)
+                    # HARDCODED to ensure clean transition to Scene 5
+                    self.nao_speak("Uhmmm... let's move on. How about we do some push-ups now, are you ready?", wait=True)
                     self.scene_step = 9
                     self.step_start_time = current_time
                 
                 # Listen for agreement
                 elif self.scene_step == 9 and current_time - self.step_start_time > 4:
-                    self.start_listening()
+                    self.start_listening("Person agreeing to push-ups.")
                     self.scene_step = 91
                 
+                # Don't respond
                 elif self.scene_step == 91 and self.is_listening_complete():
                     self.scene_step = 10
                 

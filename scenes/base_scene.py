@@ -7,8 +7,6 @@ from sic_framework.devices.common_naoqi.naoqi_leds import NaoFadeRGBRequest, Nao
 
 
 class BaseScene:
-    """Base class for all performance scenes"""
-    
     def __init__(self, nao=None, dialogue_manager=None, camera_manager=None, 
                  pose_analyzer=None, use_nao=True):
         self.nao = nao
@@ -24,6 +22,41 @@ class BaseScene:
         self.listening_active = False
         self.listen_thread = None
         self.listen_result = [None]
+        
+        self.scene_number = None
+        self.scene_context = ""
+    
+    def set_scene_context(self, scene_number):
+        from dialogue.prompts import SCENE_CONTEXTS
+        self.scene_number = scene_number
+        self.scene_context = SCENE_CONTEXTS.get(scene_number, "")
+        if self.scene_context:
+            print(f"[SCENE {scene_number} CONTEXT SET]")
+    
+    def generate_speech(self, instruction, fallback_text=None, max_tokens=30):
+        try:
+            full_context = f"{self.scene_context}\n\nCurrent action: {instruction}"
+            
+            response = self.dialogue_manager.get_contextual_response(
+                user_input="",
+                scene_context=full_context,
+                max_tokens=max_tokens
+            )
+            
+            if response and len(response) > 0:
+                return response
+            elif fallback_text:
+                print(f"GPT returned empty - Using fallback")
+                return fallback_text
+            else:
+                return "Let's continue!"
+                
+        except Exception as e:
+            print(f"GPT FAILED: {e}")
+            if fallback_text:
+                print(f"Using fallback")
+                return fallback_text
+            return "Let's continue!"
     
     def set_leds_listening(self):
         """Set face LEDs to blue (listening)"""
@@ -70,31 +103,36 @@ class BaseScene:
         print("[JINGLE PLAYS]")
         time.sleep(1)
     
-    def start_listening(self):
+    def start_listening(self, scene_context=""):
         if self.listening_active:
             return
         
-        print("[LISTENING FOR RESPONSE...]")
+        print("LISTENING FOR RESPONSE...")
         self.listening_active = True
         self.listen_result[0] = None
         
         self.set_leds_listening()
         
         def listen_async():
+            full_context = f"{self.scene_context}\n\n{scene_context}" if scene_context else self.scene_context
+            
             result = self.dialogue_manager.listen_and_respond_auto(
                 max_duration=30.0,
-                silence_threshold=0.04,
-                silence_duration=2
+                silence_threshold=0.02,
+                silence_duration=3,
+                scene_context=full_context
             )
             
             self.set_leds_thinking()
             
-            if result and 'user_input' in result:
-                self.listen_result[0] = result['user_input']
-                print(f"[PERSON SAID]: {self.listen_result[0]}")
+            if result:
+                self.listen_result[0] = result
+                if result.get('user_input'):
+                    print(f"[PERSON SAID]: {result['user_input']}")
+                if result.get('response'):
+                    print(f"[GPT GENERATED]: {result['response']}")
             else:
                 print("[NO SPEECH DETECTED]")
-            
         
         self.listen_thread = threading.Thread(target=listen_async, daemon=True)
         self.listen_thread.start()
@@ -107,6 +145,14 @@ class BaseScene:
     
     def get_listen_result(self):
         return self.listen_result[0]
+    
+    def get_gpt_response(self):
+        result = self.listen_result[0]
+        return result.get('response') if result else None
+    
+    def get_user_input(self):
+        result = self.listen_result[0]
+        return result.get('user_input') if result else None
     
     def draw_scene_info(self, frame, scene_name):
         cv2.putText(frame, scene_name, 
