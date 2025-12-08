@@ -9,6 +9,10 @@ import time
 
 
 class Scene1(BaseScene):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.set_scene_context(scene_number=1)
+    
     def run(self):
         print("SCENE 1: GREETING & CALIBRATION")
         
@@ -27,90 +31,86 @@ class Scene1(BaseScene):
                 
                 current_time = time.time()
                 
-                # ACT 1: First greeting - "Hey there you are, almost did not see you"
+                # OPENING
                 if self.scene_step == 0:
                     self.nao_speak("Hey there you are, almost did not see you!",
                                   animation="animations/Stand/Gestures/Hey_1", wait=True)
                     self.scene_step = 1
                     self.step_start_time = current_time
                 
-                # ACT 2: Listen for person's response - "Who let you in here?!"
+                # CONVERSATIONAL
                 elif self.scene_step == 1 and current_time - self.step_start_time > 3:
-                    self.start_listening()
+                    self.start_listening("Person might ask who you are or who let you in.")
                     self.scene_step = 11
                 
+                # CONVERSATIONAL
                 elif self.scene_step == 11 and self.is_listening_complete():
+                    gpt_response = self.get_gpt_response()
+                    if gpt_response:
+                        self.nao_speak(gpt_response, wait=True)
                     self.scene_step = 2
                     self.step_start_time = current_time
                 
-                # ACT 3: Robot ignores and introduces himself
-                # "I'm Coach Nao, the smallest but smartest trainer in town."
-                elif self.scene_step == 2 and current_time - self.step_start_time > 1:
-                    self.nao_speak("I'm Coach Nao, the smallest but smartest trainer in town.", wait=True)
-                    self.scene_step = 21
-                    self.step_start_time = current_time
-                
-                # "I will be your trainer today and guide you through the most intense session you will ever be doing."
-                elif self.scene_step == 21 and current_time - self.step_start_time > 4:
-                    self.nao_speak("I will be your trainer today and guide you through the most intense session you will ever be doing.", 
-                                  wait=True)
+                # NARRATIVE BEAT
+                elif self.scene_step == 2 and current_time - self.step_start_time > 4:
+                    mission = self.generate_speech(
+                        "Tell them you'll guide them through the most intense training session they'll ever do.",
+                        fallback_text="I will be your trainer today and guide you through the most intense session you will ever be doing."
+                    )
+                    self.nao_speak(mission, wait=True)
                     self.scene_step = 22
                     self.step_start_time = current_time
                 
-                # *Fist pump*
+                # ANIMATION
                 elif self.scene_step == 22 and current_time - self.step_start_time > 5:
                     self.nao_animate("animations/Stand/Gestures/Yes_1")
                     self.scene_step = 23
                     self.step_start_time = current_time
                 
-                # (Awkward pause)
+                # NARRATIVE BEAT
                 elif self.scene_step == 23 and current_time - self.step_start_time > 2:
-                    self.scene_step = 24
-                    self.step_start_time = current_time
-                
-                # "Okay, let's make sure I can observe your movements. Please stand in front of me so I can detect your movements today."
-                elif self.scene_step == 24 and current_time - self.step_start_time > 1:
-                    self.nao_speak("Okay, let's make sure I can observe your movements. Please stand in front of me so I can detect your movements today.",
-                                  wait=True)
+                    camera_instruction = self.generate_speech(
+                        "Ask them to stand in front of you so you can observe their movements.",
+                        fallback_text="Okay, let's make sure I can observe your movements. Please stand in front of me so I can detect your movements today."
+                    )
+                    self.nao_speak(camera_instruction, wait=True)
                     self.scene_step = 3
                     self.step_start_time = current_time
                 
-                # ACT 4: Listen for person's agreement
-                # "Okay it's kind of weird that you got in here but I was just about to do my home workout so I guess you could help out."
+                # CONVERSATIONAL
                 elif self.scene_step == 3 and current_time - self.step_start_time > 6:
-                    self.start_listening()
+                    self.start_listening("Person is agreeing to train with you.")
                     self.scene_step = 31
                 
+                # CONVERSATIONAL
                 elif self.scene_step == 31 and self.is_listening_complete():
+                    gpt_response = self.get_gpt_response()
+                    if gpt_response:
+                        self.nao_speak(gpt_response, wait=True)
                     self.scene_step = 4
                     self.step_start_time = current_time
                 
-                # Wait a moment (person moves to mark)
-                elif self.scene_step == 4 and current_time - self.step_start_time > 2:
-                    self.scene_step = 5
-                    self.step_start_time = current_time
-                
-                # ACT 5: "Perfect. Ready for round one?"
-                elif self.scene_step == 5 and current_time - self.step_start_time > 1:
-                    self.nao_speak("Perfect. Ready for round one?",
-                                  animation="animations/Stand/Gestures/Enthusiastic_1", wait=True)
+                # TRANSITION
+                elif self.scene_step == 4 and current_time - self.step_start_time > 3:
+                    ready_check = self.generate_speech(
+                        "Say 'Perfect' to acknowledge they're positioned. Then ask if they're ready for round one.",
+                        fallback_text="Perfect. Ready for round one?"
+                    )
+                    self.nao_speak(ready_check,
+                                  animation="animations/Stand/Gestures/Enthusiastic_1", 
+                                  wait=True)
                     self.scene_step = 6
                     self.step_start_time = current_time
-                
-                # Listen for "Yeah, sure..."
+                 
                 elif self.scene_step == 6 and current_time - self.step_start_time > 3:
-                    self.start_listening()
+                    self.start_listening("Person confirming they're ready.")
                     self.scene_step = 61
                 
                 elif self.scene_step == 61 and self.is_listening_complete():
                     self.scene_step = 7
                     self.step_start_time = current_time
                 
-                # Wait a moment before ending
                 elif self.scene_step == 7 and current_time - self.step_start_time > 1:
-                    self.scene_step = 8
-                
-                elif self.scene_step == 8:
                     print("END OF SCENE 1")
                     break
         

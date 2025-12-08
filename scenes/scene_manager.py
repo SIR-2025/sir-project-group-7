@@ -136,12 +136,11 @@ if __name__ == "__main__":
     from scene_5 import Scene5
     from scene_6 import Scene6
     from scene_7 import Scene7
-    from scene_8 import Scene8
     
     manager = SceneManager(use_nao=use_nao, nao_ip=args.nao_ip, 
                           use_nao_mic=use_nao_mic, use_nao_camera=use_nao_camera)
     
-    scene_map = {"1": Scene1, "2": Scene2, "3": Scene3, "4":Scene4, "5":Scene5, "6":Scene6, "7":Scene7, "8":Scene8}
+    scene_map = {"1": Scene1, "2": Scene2, "3": Scene3, "4":Scene4, "5":Scene5, "6":Scene6, "7":Scene7}
     
     for scene_num in args.scenes:
         if scene_num in scene_map:
