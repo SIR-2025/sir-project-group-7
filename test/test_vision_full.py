@@ -1,293 +1,256 @@
-from vision import CameraManager, PoseAnalyzer
-from dialogue import DialogueManager
-import cv2
+import sys
+from pathlib import Path
+import argparse
 import time
+import cv2
+import numpy as np
+
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+from vision.camera_manager import CameraManager
+from vision.face_tracker import FaceTracker
 
 
-def test_camera_only():
-    print("\n=== Camera Test ===\n")
-    camera = CameraManager(use_local_camera=True)
-    camera.test_camera(duration=5)
-    camera.cleanup()
+def test_laptop_only():
 
+    window_name = "Laptop Camera"
+    cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+    cv2.moveWindow(window_name, 100, 100)
+    cv2.resizeWindow(window_name, 640, 480)
+    cv2.waitKey(1)
 
-def test_pose_only():
-    print("\n=== Pose Detection Test ===\n")
-
-    camera = CameraManager(use_local_camera=True)
-    pose = PoseAnalyzer(camera_manager=camera)
-
-    print("Do a squat! Press ESC to stop.\n")
-
-    try:
-        while True:
-            angles, annotated_frame = pose.capture_and_analyze()
-
-            if angles and annotated_frame is not None:
-                analysis = pose.check_squat_form(angles)
-
-                cv2.putText(
-                    annotated_frame,
-                    f"Accuracy: {analysis['overall_accuracy']:.1f}%",
-                    (10, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    1,
-                    (0, 255, 0),
-                    2
-                )
-
-                cv2.imshow("Pose Detection", annotated_frame)
-                print(f"Accuracy: {analysis['overall_accuracy']:.1f}%")
-
-            if cv2.waitKey(30) & 0xFF == 27:
-                break
-
-    except KeyboardInterrupt:
-        pass
-    finally:
-        pose.cleanup()
-        camera.cleanup()
-
-
-def test_with_dialogue_continuous():
-    print("\n=== Pose + AI Dialogue Test (Continuous) ===\n")
-
-    camera = CameraManager(use_local_camera=True)
-    pose = PoseAnalyzer(camera_manager=camera)
-    dialogue = DialogueManager(
-        use_local_mic=True,
-        camera_manager=camera,
-        pose_analyzer=pose
+    # Initialize camera
+    camera = CameraManager(
+        use_local_camera=True,
+        camera_index=0,
+        use_threading=True
     )
 
-    print("Camera will stay open. Press SPACE to capture and get feedback.")
-    print("Press ESC to exit.\n")
-
-    attempt = 0
+    face_tracker = FaceTracker()
+    frame_count = 0
+    start_time = time.time()
 
     try:
         while True:
             frame = camera.capture_frame()
 
             if frame is not None:
-                angles, annotated_frame = pose.analyze_frame(frame)
+                frame_count += 1
 
-                if angles and annotated_frame is not None:
-                    analysis = pose.check_squat_form(angles)
+                detection = face_tracker.detect_face(frame)
+                display = face_tracker.annotate_frame(frame, detection)
 
-                    cv2.putText(
-                        annotated_frame,
-                        f"Accuracy: {analysis['overall_accuracy']:.1f}%",
-                        (10, 30),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        1,
-                        (0, 255, 0),
-                        2
-                    )
+                # Info overlay
+                elapsed = time.time() - start_time
+                fps = frame_count / elapsed if elapsed > 0.1 else 0
+                cv2.putText(display, f"Frame: {frame_count} | FPS: {fps:.1f}",
+                            (10, display.shape[0] - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
 
-                    cv2.putText(
-                        annotated_frame,
-                        "Press SPACE for feedback, ESC to quit",
-                        (10, annotated_frame.shape[0] - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.5,
-                        (255, 255, 255),
-                        1
-                    )
-
-                    cv2.imshow("Your Form", annotated_frame)
-                else:
-                    cv2.putText(
-                        frame,
-                        "No pose detected - stand in view",
-                        (10, 30),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.7,
-                        (0, 0, 255),
-                        2
-                    )
-                    cv2.imshow("Your Form", frame)
-
-            key = cv2.waitKey(30) & 0xFF
-
-            if key == 27:
-                break
-            elif key == 32:
-                attempt += 1
-                print(f"\n=== Attempt {attempt} ===")
-
-                angles, _ = pose.capture_and_analyze()
-
-                if angles:
-                    analysis = pose.check_squat_form(angles)
-                    print(f"Accuracy: {analysis['overall_accuracy']:.1f}%")
-
-                    feedback = dialogue.get_feedback(analysis, "squat", attempt)
-                    print(f"Feedback: {feedback}\n")
-                else:
-                    print("No pose detected. Try again.\n")
-
-    except KeyboardInterrupt:
-        print("\nStopped")
-    finally:
-        cv2.destroyAllWindows()
-        pose.cleanup()
-        camera.cleanup()
-        dialogue.cleanup()
-
-
-def test_with_dialogue():
-    print("\n=== Pose + AI Dialogue Test ===\n")
-
-    camera = CameraManager(use_local_camera=True)
-    pose = PoseAnalyzer(camera_manager=camera)
-    dialogue = DialogueManager(
-        use_local_mic=True,
-        camera_manager=camera,
-        pose_analyzer=pose
-    )
-
-    print("Do a squat and I'll give feedback!\n")
-
-    try:
-        for i in range(3):
-            print(f"\nAttempt {i + 1}/3")
-            input("Press Enter to capture your form...")
-
-            angles, annotated_frame = pose.capture_and_analyze()
-
-            if angles:
-                analysis = pose.check_squat_form(angles)
-
-                print(f"Accuracy: {analysis['overall_accuracy']:.1f}%")
-
-                if annotated_frame is not None:
-                    cv2.imshow("Your Form", annotated_frame)
-                    cv2.waitKey(2000)
-                    cv2.destroyAllWindows()
-
-                feedback = dialogue.get_feedback(analysis, "squat", i + 1)
-                print(f"Feedback: {feedback}\n")
+                cv2.imshow(window_name, display)
             else:
-                print("No pose detected. Try again.\n")
+                placeholder = np.zeros((480, 640, 3), dtype=np.uint8)
+                cv2.putText(placeholder, "Waiting for camera...", (150, 240),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (100, 100, 100), 2)
+                cv2.imshow(window_name, placeholder)
+
+            # Check if window was closed (waitKey still needed for OpenCV)
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord('q') or cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1:
+                break
 
     except KeyboardInterrupt:
-        print("\nStopped")
+        print("\nInterrupted")
     finally:
-        pose.cleanup()
         camera.cleanup()
-        dialogue.cleanup()
+        cv2.destroyAllWindows()
+        print(f"\nDone! {frame_count} frames")
 
 
-def test_voice_and_pose():
-    print("\n=== Voice + Pose Test ===\n")
+def test_with_nao(nao_ip: str):
+    print("DUAL CAMERA TEST - NAO Mode")
+    print(f"Connecting to NAO at {nao_ip}...")
+    print("Face tracking: ENABLED by default")
+    print("Press 'r' to reset head, 't' to toggle tracking, 'q' to quit")
+    print("=" * 60)
 
-    camera = CameraManager(use_local_camera=True)
-    pose = PoseAnalyzer(camera_manager=camera)
-    dialogue = DialogueManager(
-        use_local_mic=True,
-        camera_manager=camera,
-        pose_analyzer=pose,
-        system_prompt="""You are an encouraging fitness trainer.
-You can see the user's form through the camera.
-Give brief, specific feedback. Max 20 words."""
+    # Import NAO
+    try:
+        from sic_framework.devices import Nao
+        from sic_framework.devices.common_naoqi.naoqi_camera import NaoqiCameraConf
+        from sic_framework.devices.common_naoqi.naoqi_autonomous import (
+            NaoWakeUpRequest, NaoRestRequest
+        )
+    except ImportError:
+        print("ERROR: SIC Framework not installed!")
+        return
+
+    # Create windows FIRST before any camera init
+    LAPTOP_WINDOW = "1. LAPTOP - Pose Detection"
+    NAO_WINDOW = "2. NAO - Face Tracking"
+
+    print("\n[Creating Windows]")
+    cv2.namedWindow(LAPTOP_WINDOW, cv2.WINDOW_NORMAL)
+    cv2.moveWindow(LAPTOP_WINDOW, 50, 100)
+    cv2.resizeWindow(LAPTOP_WINDOW, 640, 480)
+    print(f"  ✓ {LAPTOP_WINDOW}")
+
+    cv2.namedWindow(NAO_WINDOW, cv2.WINDOW_NORMAL)
+    cv2.moveWindow(NAO_WINDOW, 720, 100)
+    cv2.resizeWindow(NAO_WINDOW, 640, 480)
+    print(f"  ✓ {NAO_WINDOW}")
+
+    # Show placeholders
+    placeholder = np.zeros((480, 640, 3), dtype=np.uint8)
+    cv2.putText(placeholder, "Initializing...", (200, 240),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (100, 100, 100), 2)
+    cv2.imshow(LAPTOP_WINDOW, placeholder)
+    cv2.imshow(NAO_WINDOW, placeholder)
+    cv2.waitKey(100)
+
+    # Connect to NAO with camera config
+    print("\n[Connecting to NAO]")
+    try:
+        conf = NaoqiCameraConf(vflip=0)
+        nao = Nao(ip=nao_ip, top_camera_conf=conf)
+        nao.autonomous.request(NaoWakeUpRequest())
+        time.sleep(1)
+        print("  ✓ NAO connected and awake")
+    except Exception as e:
+        print(f"  ✗ NAO connection failed: {e}")
+        print("\nFalling back to laptop-only...")
+        cv2.destroyAllWindows()
+        test_laptop_only()
+        return
+
+    print("\n[Initializing Laptop Camera]")
+    laptop_camera = CameraManager(
+        use_local_camera=True,
+        camera_index=0,
+        use_threading=True
     )
 
-    print("Commands:")
-    print("- Say 'check my form' - I'll analyze your current pose")
-    print("- Say 'describe' - I'll describe what I see")
-    print("- Ask any question - I'll answer")
-    print("\nCamera feed is live. Press ESC to exit.\n")
+    print("\n[Initializing NAO Camera]")
+    nao_camera = CameraManager(
+        nao=nao,
+        use_local_camera=False
+    )
 
-    attempt = 0
+    face_tracker = FaceTracker(
+        smoothing_alpha=0.50,
+        dead_zone_pixels=20,
+        max_yaw=0.40,
+        max_pitch=0.25,
+        movement_speed=0.50
+    )
+    face_tracker.reset_head_position(nao)
+    face_tracker.start_tracking()
+
+    print("\n" + "=" * 60)
+    print("Running... Close windows or press 'q' to quit")
+    print("=" * 60 + "\n")
+
+    frame_count = 0
+    start_time = time.time()
+    last_track_time = 0
+    TRACK_INTERVAL = 0.3
 
     try:
         while True:
-            frame = camera.capture_frame()
+            now = time.time()
+            elapsed = now - start_time
 
-            if frame is not None:
-                angles, annotated_frame = pose.analyze_frame(frame)
+            # === LAPTOP CAMERA (left window) ===
+            laptop_frame = laptop_camera.capture_frame()
+            if laptop_frame is not None:
+                frame_count += 1
+                fps = frame_count / elapsed if elapsed > 0.1 else 0
 
-                display_frame = annotated_frame if annotated_frame is not None else frame
+                display_laptop = laptop_frame.copy()
+                cv2.putText(display_laptop, "LAPTOP - Pose Detection",
+                            (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                cv2.putText(display_laptop, f"Frame: {frame_count} | FPS: {fps:.1f}",
+                            (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
 
-                cv2.putText(
-                    display_frame,
-                    "Speak your command (listening...)",
-                    (10, display_frame.shape[0] - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.5,
-                    (255, 255, 255),
-                    1
-                )
+                cv2.imshow(LAPTOP_WINDOW, display_laptop)
 
-                cv2.imshow("Fitness Trainer", display_frame)
+            # === NAO CAMERA (right window) ===
+            nao_frame = nao_camera.capture_frame()
+            if nao_frame is not None:
+                detection = face_tracker.detect_face(nao_frame)
+                display_nao = face_tracker.annotate_frame(nao_frame, detection)
 
-            key = cv2.waitKey(30) & 0xFF
+                cv2.putText(display_nao, "NAO - Face Tracking",
+                            (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
-            if key == 27:
-                break
-            elif key == 32:
-                print("\nListening... (5 seconds)")
-                user_input = dialogue.listen_and_transcribe(duration=5.0)
-
-                if user_input:
-                    print(f"You: {user_input}")
-
-                    if "form" in user_input.lower() or "check" in user_input.lower():
-                        attempt += 1
-                        feedback = dialogue.get_pose_feedback("squat", show_frame=False)
-                        print(f"Trainer: {feedback}\n")
-                    elif "describe" in user_input.lower() or "see" in user_input.lower():
-                        response = dialogue.describe_image()
-                        print(f"Trainer: {response}\n")
+                if now - last_track_time >= TRACK_INTERVAL:
+                    if detection.center:
+                        moved = face_tracker.move_nao_head_to_face(
+                            nao, detection.center, nao_frame.shape
+                        )
+                        if moved:
+                            last_track_time = now
                     else:
-                        response = dialogue._get_response(user_input)
-                        print(f"Trainer: {response}\n")
+                        last_track_time = now
+
+                cv2.imshow(NAO_WINDOW, display_nao)
+            else:
+                # Show waiting message for NAO
+                waiting = np.zeros((480, 640, 3), dtype=np.uint8)
+                cv2.putText(waiting, "NAO Camera - Waiting...",
+                            (150, 240), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 100, 255), 2)
+                cv2.imshow(NAO_WINDOW, waiting)
+
+            # Check if windows are still open
+            key = cv2.waitKey(1) & 0xFF
+            laptop_open = cv2.getWindowProperty(LAPTOP_WINDOW, cv2.WND_PROP_VISIBLE) >= 1
+            nao_open = cv2.getWindowProperty(NAO_WINDOW, cv2.WND_PROP_VISIBLE) >= 1
+
+            # Keyboard controls
+            if key == ord('r'):
+                print("Resetting NAO head to center...")
+                face_tracker.reset_head_position(nao)
+
+            if key == ord('t'):
+                if face_tracker.tracking_active:
+                    print("Pausing face tracking...")
+                    face_tracker.stop_tracking()
                 else:
-                    print("No speech detected.\n")
+                    print("Resuming face tracking...")
+                    face_tracker.start_tracking()
+
+            if key == ord('q') or not laptop_open or not nao_open:
+                print("\nWindow closed or 'q' pressed - shutting down...")
+                break
 
     except KeyboardInterrupt:
-        print("\nStopped")
+        print("\nInterrupted")
     finally:
+        print("\n[Cleanup]")
+        face_tracker.reset_head_position(nao)
+        laptop_camera.cleanup()
+        nao_camera.cleanup()
+        try:
+            from sic_framework.devices.common_naoqi.naoqi_autonomous import NaoRestRequest
+            nao.autonomous.request(NaoRestRequest())
+            print("  ✓ NAO resting")
+        except Exception:
+            pass
         cv2.destroyAllWindows()
-        pose.cleanup()
-        camera.cleanup()
-        dialogue.cleanup()
+        print(f"  ✓ Done! {frame_count} frames")
 
 
 def main():
-    import sys
+    parser = argparse.ArgumentParser(description="Test Dual Camera System")
+    parser.add_argument("--nao", action="store_true", help="Enable NAO")
+    parser.add_argument("--ip", type=str, default="10.0.0.241", help="NAO IP")
+    args = parser.parse_args()
 
-    print("\n" + "=" * 60)
-    print("Vision System Full Test")
-    print("=" * 60)
-
-    if len(sys.argv) > 1:
-        if sys.argv[1] == "camera":
-            test_camera_only()
-        elif sys.argv[1] == "pose":
-            test_pose_only()
-        elif sys.argv[1] == "dialogue":
-            test_with_dialogue_continuous()
-        elif sys.argv[1] == "voice":
-            test_voice_and_pose()
+    if args.nao:
+        test_with_nao(args.ip)
     else:
-        print("\nUsage:")
-        print("  python test_vision_full.py camera    - Test camera only")
-        print("  python test_vision_full.py pose      - Test pose detection")
-        print("  python test_vision_full.py dialogue  - Test pose + AI (continuous)")
-        print("  python test_vision_full.py voice     - Test voice + pose\n")
-
-        choice = input("Choose (camera/pose/dialogue/voice): ").lower()
-
-        if choice == "camera":
-            test_camera_only()
-        elif choice == "pose":
-            test_pose_only()
-        elif choice == "dialogue":
-            test_with_dialogue_continuous()
-        elif choice == "voice":
-            test_voice_and_pose()
+        test_laptop_only()
 
 
 if __name__ == "__main__":
