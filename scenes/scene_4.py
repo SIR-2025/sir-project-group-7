@@ -20,6 +20,11 @@ class Scene4(BaseScene):
             squat_count = 0
             target_squats = 3
             
+            squat_1_retries = 0
+            squat_2_retries = 0
+            squat_3_retries = 0
+            max_retries = 2
+            
             while True:
                 frame = self.get_display_frame()
                 if frame is None:
@@ -34,7 +39,6 @@ class Scene4(BaseScene):
                 
                 current_time = time.time()
                 
-                # ACT 1: Introduction
                 if self.scene_step == 0:
                     intro = self.generate_speech(
                         "Announce the first exercise is the squat. Call it a biomechanical marvel.",
@@ -53,7 +57,6 @@ class Scene4(BaseScene):
                     self.scene_step = 2
                     self.step_start_time = current_time
                 
-                # ACT 2: NAO attempts squat
                 elif self.scene_step == 2 and current_time - self.step_start_time > 4:
                     print("[NAO SITS DOWN - 'squat attempt']")
                     if self.use_nao and self.nao:
@@ -74,7 +77,6 @@ class Scene4(BaseScene):
                     self.scene_step = 3
                     self.step_start_time = current_time
                 
-                # ACT 3: Request squats
                 elif self.scene_step == 3 and current_time - self.step_start_time > 2:
                     request = self.generate_speech(
                         "Admit that's the best you can do but they can do better. Request three squats.",
@@ -84,7 +86,6 @@ class Scene4(BaseScene):
                     self.scene_step = 4
                     self.step_start_time = current_time
                 
-                # ACT 4: Wait for first squat
                 elif self.scene_step == 4 and current_time - self.step_start_time > 5:
                     self.start_listening("Person might comment on your squat, then do their first squat and say 'One'.")
                     self.scene_step = 41
@@ -93,24 +94,35 @@ class Scene4(BaseScene):
                     response = self.get_user_input()
                     if response and ("one" in response.lower() or "1" in response or "won" in response.lower()):
                         squat_count = 1
+                        squat_1_retries = 0
                         print(f"[Squat #{squat_count} detected]")
                         
-                        self.nao_speak("Nice, good attempt!", wait=True)
+                        feedback = self._get_squat_feedback()
+                        self.nao_speak(feedback, wait=True)
+                        time.sleep(0.5)
+                        self.nao_speak("Now do the second one!", wait=True)
+                        
                         self.scene_step = 5
                         self.step_start_time = current_time
                     else:
-                        print(f"[Did not detect 'one' in: '{response}' - asking for repeat...]")
+                        squat_1_retries += 1
+                        print(f"[Did not detect 'one' - retry {squat_1_retries}/{max_retries}]")
                         
-                        missed = self.generate_speech(
-                            "You didn't see the squat properly. Ask them to repeat squat number one and say 'one' when done. Be slightly awkward but professional.",
-                            fallback_text="Sorry, I didn't quite catch that. Can you repeat squat one and say 'one' when you're done?"
-                        )
-                        self.nao_speak(missed, wait=True)
+                        if squat_1_retries >= max_retries:
+                            print("[Max retries for squat 1 - moving on]")
+                            squat_count = 1
+                            self.nao_speak("Let's count that as one! Moving on...", wait=True)
+                            self.scene_step = 5
+                        else:
+                            missed = self.generate_speech(
+                                "You didn't see the squat properly. Ask them to repeat squat number one and say 'one' when done.",
+                                fallback_text="Sorry, I didn't catch that. Can you do squat one again and say 'one'?"
+                            )
+                            self.nao_speak(missed, wait=True)
+                            self.scene_step = 4
                         
-                        self.scene_step = 4
                         self.step_start_time = current_time
                 
-                # ACT 5: Wait for second squat - "Two!"
                 elif self.scene_step == 5 and current_time - self.step_start_time > 3:
                     self.start_listening("Person doing second squat, will say 'Two'.")
                     self.scene_step = 51
@@ -121,24 +133,35 @@ class Scene4(BaseScene):
                                     "too" in response.lower() or "to" in response.lower() or 
                                     "do" in response.lower() or "tu" in response.lower()):
                         squat_count = 2
+                        squat_2_retries = 0
                         print(f"[Squat #{squat_count} detected]")
                         
-                        self.nao_speak("Wow what an improvement compared to mine!", wait=True)
+                        feedback = self._get_squat_feedback()
+                        self.nao_speak(feedback, wait=True)
+                        time.sleep(0.5)
+                        self.nao_speak("One more to go!", wait=True)
+                        
                         self.scene_step = 6
                         self.step_start_time = current_time
                     else:
-                        print(f"[Did not detect 'two' in: '{response}' - asking for repeat...]")
+                        squat_2_retries += 1
+                        print(f"[Did not detect 'two' - retry {squat_2_retries}/{max_retries}]")
                         
-                        missed = self.generate_speech(
-                            "You didn't catch squat number two. Ask them to do it again and say 'two' when done. Sound slightly embarrassed about missing it.",
-                            fallback_text="Oops, my sensors must have glitched. Can you do squat two again and say 'two' clearly?"
-                        )
-                        self.nao_speak(missed, wait=True)
+                        if squat_2_retries >= max_retries:
+                            print("[Max retries for squat 2 - moving on]")
+                            squat_count = 2
+                            self.nao_speak("Alright, two done! One more to go!", wait=True)
+                            self.scene_step = 6
+                        else:
+                            missed = self.generate_speech(
+                                "You didn't catch squat number two. Ask them to do it again and say 'two' when done.",
+                                fallback_text="Oops, my sensors glitched. Can you do squat two again and say 'two'?"
+                            )
+                            self.nao_speak(missed, wait=True)
+                            self.scene_step = 5
                         
-                        self.scene_step = 5
                         self.step_start_time = current_time
                 
-                # ACT 6: Wait for third squat - "Three!"
                 elif self.scene_step == 6 and current_time - self.step_start_time > 3:
                     self.start_listening("Person doing third squat, will say 'Three'.")
                     self.scene_step = 61
@@ -150,28 +173,45 @@ class Scene4(BaseScene):
                                     "tree" in response.lower() or "free" in response.lower() or 
                                     "thee" in response.lower()):
                         squat_count = 3
+                        squat_3_retries = 0
                         print(f"[Squat #{squat_count} detected]")
                         
                         if self.use_nao and self.nao:
                             self.nao_animate("animations/Stand/Negation/NAO/Center_Neutral_NEG_04")
                         
-                        self.nao_speak("Great job! You look like you do this quite often. Sometimes I question why I do this.", 
-                                    wait=True)
+                        feedback = self._get_squat_feedback()
+                        self.nao_speak(feedback, wait=True)
+                        time.sleep(0.5)
+                        self.nao_speak("That was the last one!", wait=True)
+                        
+                        time.sleep(1)
+                        tips = self._get_squat_tips()
+                        self.nao_speak(tips, wait=True)
+                        
+                        time.sleep(1)
+                        self.nao_speak("Great job! You look like you do this quite often. Sometimes I question why I do this.", wait=True)
+                        
                         self.scene_step = 7
                         self.step_start_time = current_time
                     else:
-                        print(f"[Did not detect 'three' in: '{response}' - retrying...]")
+                        squat_3_retries += 1
+                        print(f"[Did not detect 'three' - retry {squat_3_retries}/{max_retries}]")
                         
-                        missed = self.generate_speech(
-                            "You missed the final squat. Ask them to repeat squat three and announce 'three' when finished. Act frustrated with your own sensors.",
-                            fallback_text="My bad! I think I blinked. One more time - squat three, and shout 'three' when you finish!"
-                        )
-                        self.nao_speak(missed, wait=True)
+                        if squat_3_retries >= max_retries:
+                            print("[Max retries for squat 3 - moving on]")
+                            squat_count = 3
+                            self.nao_speak("Perfect! Three squats complete!", wait=True)
+                            self.scene_step = 7
+                        else:
+                            missed = self.generate_speech(
+                                "You missed the final squat. Ask them to repeat squat three and announce 'three' when finished.",
+                                fallback_text="My bad! One more time - squat three, and shout 'three' when you finish!"
+                            )
+                            self.nao_speak(missed, wait=True)
+                            self.scene_step = 6
                         
-                        self.scene_step = 6
                         self.step_start_time = current_time
                 
-                # ACT 7: Listen for trainee question
                 elif self.scene_step == 7 and current_time - self.step_start_time > 5:
                     self.start_listening("Person might ask a question about breaking in or training.")
                     self.scene_step = 71
@@ -180,19 +220,15 @@ class Scene4(BaseScene):
                     self.scene_step = 8
                     self.step_start_time = current_time
                 
-                # ACT 8: Move on to push-ups
                 elif self.scene_step == 8 and current_time - self.step_start_time > 1:
-                    # HARDCODED to ensure clean transition to Scene 5
                     self.nao_speak("Uhmmm... let's move on. How about we do some push-ups now, are you ready?", wait=True)
                     self.scene_step = 9
                     self.step_start_time = current_time
                 
-                # Listen for agreement
                 elif self.scene_step == 9 and current_time - self.step_start_time > 4:
                     self.start_listening("Person agreeing to push-ups.")
                     self.scene_step = 91
                 
-                # Don't respond
                 elif self.scene_step == 91 and self.is_listening_complete():
                     self.scene_step = 10
                 
@@ -203,3 +239,67 @@ class Scene4(BaseScene):
         finally:
             self.set_leds_off()
             cv2.destroyAllWindows()
+
+    def _get_squat_tips(self):
+            if not self.pose_analyzer:
+                return "Remember: knees over toes, back straight!"
+            
+            try:
+                angles, _ = self.pose_analyzer.capture_and_analyze()
+                
+                if angles is None:
+                    return "Keep practicing those squats!"
+                
+                analysis = self.pose_analyzer.check_squat_form(angles)
+                
+                issues = []
+                for joint, data in analysis['joints'].items():
+                    if data['status'] != 'good':
+                        if 'knee' in joint:
+                            issues.append("knee alignment")
+                        elif 'hip' in joint:
+                            issues.append("hip depth")
+                        elif 'back' in joint:
+                            issues.append("back posture")
+                
+                depth_status = analysis.get('squat_depth', {}).get('status')
+                if depth_status == 'too_shallow':
+                    issues.append("squat depth")
+                
+                if issues:
+                    tip = issues[0].replace('_', ' ')
+                    return f"Pro tip: watch your {tip} next time!"
+                else:
+                    return "Your form is solid! Keep it up!"
+            
+            except Exception as e:
+                print(f"[Tips error: {e}]")
+                return "Remember to breathe during squats!"
+    
+    def _get_squat_feedback(self):
+        if not self.pose_analyzer:
+            print("[No pose analyzer - using fallback]")
+            return "Nice form!"
+        
+        try:
+            angles, annotated_frame = self.pose_analyzer.capture_and_analyze()
+            
+            if angles is None:
+                print("[Could not detect pose - using fallback]")
+                return "Good effort!"
+            
+            analysis = self.pose_analyzer.check_squat_form(angles)
+            accuracy = analysis.get('overall_accuracy', 0)
+            
+            print(f"[Pose Analysis: {accuracy:.1f}% accuracy]")
+            
+            if accuracy >= 85:
+                return "Excellent form!"
+            elif accuracy >= 70:
+                return "Good squat!"
+            else:
+                return "Nice try!"
+        
+        except Exception as e:
+            print(f"[Pose analysis error: {e}]")
+            return "Looking good!"

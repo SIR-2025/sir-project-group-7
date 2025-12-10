@@ -59,18 +59,18 @@ class BaseScene:
             return "Let's continue!"
     
     def set_leds_listening(self):
-        """Set face LEDs to blue (listening)"""
+        """Set face LEDs to green (listening)"""
+        if self.use_nao and self.nao:
+            self.nao.leds.request(NaoLEDRequest("FaceLeds", True))
+            self.nao.leds.request(NaoFadeRGBRequest("RightFaceLeds", 0, 1, 0, 0))  # Right green
+            self.nao.leds.request(NaoFadeRGBRequest("LeftFaceLeds", 0, 1, 0, 0))   # Left green
+    
+    def set_leds_thinking(self):
+        """Set face LEDs to blue (thinking/processing)"""
         if self.use_nao and self.nao:
             self.nao.leds.request(NaoLEDRequest("FaceLeds", True))
             self.nao.leds.request(NaoFadeRGBRequest("RightFaceLeds", 0, 0, 1, 0))  # Right blue
             self.nao.leds.request(NaoFadeRGBRequest("LeftFaceLeds", 0, 0, 1, 0))   # Left blue
-    
-    def set_leds_thinking(self):
-        """Set face LEDs to red (thinking/processing)"""
-        if self.use_nao and self.nao:
-            self.nao.leds.request(NaoLEDRequest("FaceLeds", True))
-            self.nao.leds.request(NaoFadeRGBRequest("RightFaceLeds", 1, 0, 0, 0))  # Right red
-            self.nao.leds.request(NaoFadeRGBRequest("LeftFaceLeds", 1, 0, 0, 0))   # Left red
     
     def set_leds_off(self):
         """Turn off face LEDs"""
@@ -78,6 +78,7 @@ class BaseScene:
             self.nao.leds.request(NaoLEDRequest("FaceLeds", False))
     
     def nao_speak(self, text, animation=None, wait=True):
+        print(f"NAO: {text}")
         cleaned_text = text.replace('...', ',')
         
         print(f"[NAO SPEAKS]: {text}")

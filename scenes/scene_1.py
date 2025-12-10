@@ -93,7 +93,7 @@ class Scene1(BaseScene):
                 # TRANSITION
                 elif self.scene_step == 4 and current_time - self.step_start_time > 3:
                     ready_check = self.generate_speech(
-                        "Say 'Perfect' to acknowledge they're positioned. Then ask if they're ready for round one.",
+                        "Ask if they're ready for round one.",
                         fallback_text="Perfect. Ready for round one?"
                     )
                     self.nao_speak(ready_check,
