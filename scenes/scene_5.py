@@ -245,8 +245,8 @@ class Scene5(BaseScene):
                     self.step_start_time = current_time
 
                 elif self.scene_step == 24 and current_time - self.step_start_time > 2:
-                    time.sleep(2)
-                    self.nao_speak("...Oh. This explains why the door was unlocked. PR-103A25 always deadbolts.",
+                    time.sleep(3)
+                    self.nao_speak("Oh. This explains why the door was unlocked. PR-103A25 always deadbolts.",
                                 wait=True)
                     self.scene_step = 25
                     self.step_start_time = current_time
