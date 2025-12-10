@@ -4,6 +4,7 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from base_scene import BaseScene
+from NewMotions import CoachNaoMotions
 import cv2
 import time
 
@@ -12,6 +13,7 @@ class Scene6(BaseScene):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.set_scene_context(scene_number=6)
+        self.motions = CoachNaoMotions(nao=self.nao if self.use_nao else None)
     
     def run(self):
         print("\n" + "="*70)
@@ -41,31 +43,57 @@ class Scene6(BaseScene):
                 
                 current_time = time.time()
                 
-
+                # Introduction with maximum energy
                 if self.scene_step == 0:
                     intro = self.generate_speech(
                         "Announce the final challenge: the plank! Tell them to get into position. You'll count down from 30 seconds.",
                         fallback_text="The final challenge! The plank! Get into position! I will count down from 30 seconds!"
                     )
-                    self.nao_speak(intro, animation="animations/Stand/Gestures/Enthusiastic_1", wait=True)
+                    
+                    # Maximum enthusiasm
+                    if self.use_nao and self.nao:
+                        self.motions.set_led_emotion("excited")
+                        self.motions.celebration_gesture()
+                    else:
+                        self.nao_speak(intro, animation="animations/Stand/Gestures/Enthusiastic_1", wait=True)
+                    
+                    self.nao_speak(intro, wait=True)
+                    
+                    # Pointing - get ready!
+                    if self.use_nao and self.nao:
+                        time.sleep(0.5)
+                        self.motions.point_forward()
+                    
                     self.scene_step = 1
                     self.step_start_time = current_time
                 
+                # Start countdown
                 elif self.scene_step == 1 and current_time - self.step_start_time > 5:
                     start_count = self.generate_speech(
                         "Say 'AND HOLD!' Start counting: 30, 29, 28. Compliment their perfect form.",
                         fallback_text="AND... HOLD! 30... 29... 28... Your form is perfect!"
                     )
+                    
+                    # Focused coaching stance
+                    if self.use_nao and self.nao:
+                        self.motions.set_led_emotion("focused")
+                        self.motions.detailed_explanation()
+                    
                     self.nao_speak(start_count, wait=True)
                     self.scene_step = 2
                     self.step_start_time = current_time
                 
-                # ACT 2: Count down
+                # ACT 2: Count down with encouragement
                 elif self.scene_step == 2 and current_time - self.step_start_time > 5:
                     count1 = self.generate_speech(
                         "Count: 25, 24, 23. Tell them to keep it steady.",
                         fallback_text="25... 24... 23... Keep it steady!"
                     )
+                    
+                    # Encouraging gesture
+                    if self.use_nao and self.nao:
+                        self.motions.encouraging_nod()
+                    
                     self.nao_speak(count1, wait=True)
                     self.scene_step = 3
                     self.step_start_time = current_time
@@ -75,59 +103,98 @@ class Scene6(BaseScene):
                         "Count: 20, 19, 18. Encourage them - they're doing great.",
                         fallback_text="20... 19... 18... You're doing great!"
                     )
+                    
+                    # Enthusiastic support
+                    if self.use_nao and self.nao:
+                        self.motions.thumbs_up_equivalent()
+                    
                     self.nao_speak(count2, wait=True)
                     self.scene_step = 4
                     self.step_start_time = current_time
                 
+                # Person asks about getting lost
                 elif self.scene_step == 4 and current_time - self.step_start_time > 4:
                     self.start_listening("Person will ask if getting lost happens often.")
                     self.scene_step = 41
                 
                 elif self.scene_step == 41 and self.is_listening_complete():
+                    # Caught off guard
+                    if self.use_nao and self.nao:
+                        self.motions.embarrassed_look_away()
+                    
                     self.scene_step = 5
                     self.step_start_time = current_time
                 
+                # Deflect with countdown
                 elif self.scene_step == 5 and current_time - self.step_start_time > 1:
                     deflect = self.generate_speech(
                         "Say '15 SECONDS!' Deflect - tell them to focus on core, not your operational flaws.",
                         fallback_text="15 SECONDS! Let's focus on your core, not my operational flaws!"
                     )
+                    
+                    # Firm redirect gesture
+                    if self.use_nao and self.nao:
+                        self.motions.firm_no()
+                        time.sleep(0.3)
+                        self.motions.point_forward()
+                    
                     self.nao_speak(deflect, wait=True)
                     self.scene_step = 6
                     self.step_start_time = current_time
                 
+                # Admission of fault
                 elif self.scene_step == 6 and current_time - self.step_start_time > 2:
                     confession = self.generate_speech(
                         "Count: 14, 13. Admit this is only the third time this week.",
                         fallback_text="14... 13... Though statistically, this is only the third time this week!"
                     )
+                    
+                    # Self-deprecating gesture
+                    if self.use_nao and self.nao:
+                        self.motions.self_reference()
+                        time.sleep(0.3)
+                        self.motions.defeated_slump()
+                    
                     self.nao_speak(confession, wait=True)
                     self.scene_step = 7
                     self.step_start_time = current_time
                 
+                # Continue counting
                 elif self.scene_step == 7 and current_time - self.step_start_time > 4:
                     count3 = self.generate_speech(
                         "Count: 12, 11.",
                         fallback_text="12... 11..."
                     )
+                    
                     self.nao_speak(count3, wait=True)
                     self.scene_step = 8
                     self.step_start_time = current_time
                 
+                # Person reacts to "third time"
                 elif self.scene_step == 8 and current_time - self.step_start_time > 2:
                     self.start_listening("Person might laugh or react to the third time admission.")
                     self.scene_step = 81
                 
                 elif self.scene_step == 81 and self.is_listening_complete():
+                    # Acknowledgment but keep going
+                    if self.use_nao and self.nao:
+                        self.motions.confused_shrug()
+                    
                     self.scene_step = 9
                     self.step_start_time = current_time
                 
-                # Final countdown
+                # Final countdown - intense
                 elif self.scene_step == 9 and current_time - self.step_start_time > 1:
                     final_count1 = self.generate_speech(
                         "Count: 10, 9, 8. Say 'FOCUS Lucas of 3B!' Deflect from your lack of spatial awareness.",
                         fallback_text="10... 9... 8... FOCUS Lucas of 3B! Let's not focus on my lack of spatial awareness!"
                     )
+                    
+                    # Authoritative redirect
+                    if self.use_nao and self.nao:
+                        self.motions.point_forward()
+                        self.motions.set_led_emotion("focused")
+                    
                     self.nao_speak(final_count1, wait=True)
                     self.scene_step = 10
                     self.step_start_time = current_time
@@ -137,30 +204,54 @@ class Scene6(BaseScene):
                         "Count: 7, 6, 5.",
                         fallback_text="7... 6... 5..."
                     )
+                    
+                    # Build tension
+                    if self.use_nao and self.nao:
+                        self.motions.detailed_explanation()
+                    
                     self.nao_speak(final_count2, wait=True)
                     self.scene_step = 11
                     self.step_start_time = current_time
                 
+                # FINISH!
                 elif self.scene_step == 11 and current_time - self.step_start_time > 3:
                     finish = self.generate_speech(
                         "Count: 4, 3, 2, 1. Say TIME!",
                         fallback_text="4... 3... 2... 1... TIME!"
                     )
+                    
+                    # Climactic gesture
+                    if self.use_nao and self.nao:
+                        self.motions.celebration_gesture()
+                    
                     self.nao_speak(finish, wait=True)
                     self.scene_step = 12
                     self.step_start_time = current_time
                 
-                # Conclusion
+                # Conclusion with self-awareness
                 elif self.scene_step == 12 and current_time - self.step_start_time > 3:
                     conclusion = self.generate_speech(
                         "Say excellent! They maintained form despite your distracting personal failures.",
                         fallback_text="Excellent! You maintained form despite my distracting personal failures!"
                     )
-                    self.nao_speak(conclusion, animation="animations/Stand/Gestures/Yes_1", wait=True)
+                    
+                    # Celebratory but self-aware
+                    if self.use_nao and self.nao:
+                        self.motions.encouragement_sequence()
+                        time.sleep(0.5)
+                        self.motions.embarrassed_look_away()
+                    else:
+                        self.nao_speak(conclusion, animation="animations/Stand/Gestures/Yes_1", wait=True)
+                    
+                    self.nao_speak(conclusion, wait=True)
                     self.scene_step = 13
                     self.step_start_time = current_time
                 
                 elif self.scene_step == 13 and current_time - self.step_start_time > 4:
+                    # Calm down LEDs for transition to finale
+                    if self.use_nao and self.nao:
+                        self.motions.set_led_emotion("calm")
+                    
                     self.scene_step = 14
                 
                 elif self.scene_step == 14:

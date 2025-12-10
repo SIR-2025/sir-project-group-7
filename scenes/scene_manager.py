@@ -13,7 +13,7 @@ import time
 
 
 class SceneManager(SICApplication):
-    def __init__(self, use_nao=True, nao_ip="10.0.0.241", use_nao_mic=True, use_nao_camera=False):
+    def __init__(self, use_nao=True, nao_ip="10.0.0.245", use_nao_mic=True, use_nao_camera=False):
         super(SceneManager, self).__init__()
         self.use_nao = use_nao
         self.nao_ip = nao_ip
@@ -106,7 +106,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="NAO Fitness Trainer Performance")
     parser.add_argument("--mode", choices=["nao", "laptop"], default="laptop",
                        help="Mode: 'nao' for NAO robot, 'laptop' for laptop-only testing")
-    parser.add_argument("--nao-ip", default="10.0.0.241",
+    parser.add_argument("--nao-ip", default="10.0.0.245",
                        help="NAO robot IP address")
     parser.add_argument("--mic", choices=["nao", "laptop"], default="nao",
                        help="Microphone: 'nao' for NAO mic, 'laptop' for laptop mic (default: nao)")

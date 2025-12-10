@@ -4,6 +4,8 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from base_scene import BaseScene
+from NewMotions import CoachNaoMotions
+from sic_framework.devices.common_naoqi.naoqi_motion import NaoqiAnimationRequest
 import cv2
 import time
 
@@ -12,6 +14,7 @@ class Scene2(BaseScene):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.set_scene_context(scene_number=2)
+        self.motions = CoachNaoMotions(nao=self.nao if self.use_nao else None)
     
     def run(self):
         print("SCENE 2: MIRROR WARM-UP")
@@ -34,26 +37,48 @@ class Scene2(BaseScene):
                 # ACT 1: Jingle
                 if self.scene_step == 0:
                     self.play_jingle()
+                    
+                    # Set energetic LED state
+                    if self.use_nao and self.nao:
+                        self.motions.set_led_emotion("excited")
+                    
                     self.scene_step = 1
                     self.step_start_time = current_time
                 
-                # ACT 2: Arm raises
+                # ACT 2: Arm raises with demonstration
                 elif self.scene_step == 1 and current_time - self.step_start_time > 2:
                     arms_instruction = self.generate_speech(
                         "Tell them to raise their arms and make a joke about your limited robot shoulder mobility.",
                         fallback_text="First: Raise your arms like me... or higher if you have human shoulders."
                     )
-                    self.nao_speak(arms_instruction, animation="animations/Stand/Gestures/Arms_1", wait=True)
+                    
+                    # Do the arm stretch demo
+                    if self.use_nao and self.nao:
+                        self.motions.arm_stretch_demo()
+                    else:
+                        self.nao_speak(arms_instruction, animation="animations/Stand/Gestures/Arms_1", wait=True)
+                        self.scene_step = 2
+                        self.step_start_time = current_time
+                        continue
+                    
+                    self.nao_speak(arms_instruction, wait=True)
                     self.scene_step = 2
                     self.step_start_time = current_time
                 
-                # ACT 3: Leg shakes
+                # ACT 3: Leg shakes - robotic warmup
                 elif self.scene_step == 2 and current_time - self.step_start_time > 5:
                     legs_instruction = self.generate_speech(
                         "Tell them to shake their legs. Joke about how your robot legs just vibrate.",
                         fallback_text="Shake your legs, or do whatever humans do when they loosen up. Mine just... vibrate a bit."
                     )
-                    self.nao_speak(legs_instruction, animation="animations/Stand/BodyTalk/BodyTalk_1", wait=True)
+                    
+                    # Stiff, mechanical leg movements
+                    if self.use_nao and self.nao:
+                        self.motions.robotic_warmup()
+                    else:
+                        self.nao_speak(legs_instruction, animation="animations/Stand/BodyTalk/BodyTalk_1", wait=True)
+                    
+                    self.nao_speak(legs_instruction, wait=True)
                     self.scene_step = 3
                     self.step_start_time = current_time
                 
@@ -68,19 +93,36 @@ class Scene2(BaseScene):
                     if user_said and len(user_said) > 3:
                         gpt_response = self.get_gpt_response()
                         if gpt_response:
+                            # Defensive but playful gesture - "me" reference
+                            if self.use_nao and self.nao:
+                                self.motions.self_reference()
+                            
                             self.nao_speak(gpt_response, wait=True)
                             time.sleep(1)
                     
                     self.scene_step = 4
                     self.step_start_time = current_time
                 
-                # ACT 5: Stretch and feeling warm
+                # ACT 5: Stretch and feeling warm with exaggerated movements
                 elif self.scene_step == 4 and current_time - self.step_start_time > 1:
                     stretch_instruction = self.generate_speech(
                         "Tell them to stretch left. Joke about your limited range of motion. Ask if they're feeling warm and ready for real work.",
                         fallback_text="Let's stretch left! My body can only go... this far. Respect my angles. Feeling warm already? Because then we can start with the real work, or at least you. Ha-ha-ha!"
                     )
+                    
+                    # Show limited range with self-aware gesture
+                    if self.use_nao and self.nao:
+                        self.nao.motion.request(NaoqiAnimationRequest("animations/Stand/BodyTalk/BodyTalk_17"))
+                        time.sleep(1)
+                        self.motions.defeated_slump()  # Acknowledge limitations
+                    
                     self.nao_speak(stretch_instruction, animation="animations/Stand/Gestures/Explain_1", wait=True)
+                    
+                    # Questioning gesture - "ready?"
+                    if self.use_nao and self.nao:
+                        time.sleep(0.5)
+                        self.motions.point_forward()
+                    
                     self.scene_step = 5
                     self.step_start_time = current_time
                 
@@ -95,13 +137,22 @@ class Scene2(BaseScene):
                     if user_said:
                         gpt_response = self.get_gpt_response()
                         if gpt_response:
+                            # Encouraging gesture
+                            if self.use_nao and self.nao:
+                                self.motions.encouraging_nod()
+                            
                             self.nao_speak(gpt_response, wait=False)
                     
                     self.scene_step = 6
                     self.step_start_time = current_time
                 
-                # ACT 7: Closing
+                # ACT 7: Closing with ready stance
                 elif self.scene_step == 6 and current_time - self.step_start_time > 2:
+                    # Set focused state for upcoming workout
+                    if self.use_nao and self.nao:
+                        self.motions.set_led_emotion("focused")
+                        self.motions.confident_presentation()
+                    
                     self.scene_step = 7
                 
                 elif self.scene_step == 7:
