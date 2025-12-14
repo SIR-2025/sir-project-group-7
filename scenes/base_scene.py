@@ -2,7 +2,7 @@ import cv2
 import time
 import threading
 from sic_framework.devices.nao import NaoqiTextToSpeechRequest
-from sic_framework.devices.common_naoqi.naoqi_motion import NaoqiAnimationRequest
+from sic_framework.devices.common_naoqi.naoqi_motion import NaoqiAnimationRequest, NaoPostureRequest
 from sic_framework.devices.common_naoqi.naoqi_leds import NaoFadeRGBRequest, NaoLEDRequest
 
 
@@ -180,3 +180,29 @@ class BaseScene:
     
     def run(self):
         raise NotImplementedError("Subclasses must implement run()")
+
+    def cleanup(self):
+        try:
+            if self.use_nao and self.nao:
+                try:
+                    self.set_leds_off()
+                except Exception as e:
+                    if "timed out" in str(e).lower() or "timeout" in str(e).lower():
+                        print("[LED cleanup timeout - component may have stopped already]")
+                    else:
+                        print(f"[LED cleanup error: {e}]")
+            
+            if self.use_nao and self.nao:
+                print("[RESETTING TO STAND]")
+                try:
+                    from sic_framework.devices.common_naoqi.naoqi_motion import NaoPostureRequest
+                    self.nao.motion.request(NaoPostureRequest("Stand", 0.8), block=False)
+                    time.sleep(0.5)  # Brief moment to start movement
+                except Exception as e:
+                    if "timed out" in str(e).lower() or "timeout" in str(e).lower():
+                        print("[Stand posture timeout - robot likely already standing]")
+                    else:
+                        print(f"[Posture reset error: {e}]")
+                    
+        except Exception as e:
+            print(f"Error during cleanup: {e}")
