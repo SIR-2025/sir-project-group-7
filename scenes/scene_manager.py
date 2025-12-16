@@ -9,6 +9,7 @@ from sic_framework.devices.common_naoqi.naoqi_autonomous import NaoWakeUpRequest
 from dialogue.dialogue_manager import DialogueManager
 from vision.camera_manager import CameraManager
 from vision.pose_analyzer import PoseAnalyzer
+import sounddevice as sd
 import time
 
 
@@ -35,8 +36,8 @@ class SceneManager(SICApplication):
         
         self.dialogue_manager = DialogueManager(
             nao=self.nao if self.use_nao else None,
-            use_local_mic=not self.use_nao_mic,  # False = NAO mic, True = laptop mic
-            system_prompt="You are Coach Nao, a confident fitness trainer robot. Keep responses under 20 words."
+            use_local_mic=(args.mic == 'laptop'),  # False = NAO mic, True = laptop mic
+            mic_device_index=args.mic_device, 
         )
         
         if self.use_nao_camera and self.nao:
@@ -67,12 +68,12 @@ class SceneManager(SICApplication):
         self.scenes.append(scene_class)
     
     def run_all_scenes(self):
-        print("NAO FITNESS TRAINER - FULL PERFORMANCE")
-        print(f"Total scenes: {len(self.scenes)}")
-        
-        try:
-            for i, scene_class in enumerate(self.scenes):
-                print(f"\n>>> Starting Scene {i+1}/{len(self.scenes)}")
+        """Run all scenes in sequence"""
+        for i, scene_class in enumerate(self.scenes, 1):
+            print(f"\n>>> Starting Scene {i}/{len(self.scenes)}")
+            
+            try:
+                # Create and run the scene
                 scene = scene_class(
                     nao=self.nao,
                     dialogue_manager=self.dialogue_manager,
@@ -80,14 +81,20 @@ class SceneManager(SICApplication):
                     pose_analyzer=self.pose_analyzer,
                     use_nao=self.use_nao
                 )
+                
                 scene.run()
-                print(f"<<< Scene {i+1} Complete\n")
-                time.sleep(1)
-            
-            print("PERFORMANCE COMPLETE!")
-        
-        finally:
-            self.cleanup_resources()
+                
+                print(f"<<< Scene {i} Complete\n")
+                
+            except Exception as e:
+                print(f"Error in scene {i}: {e}")
+                import traceback
+                traceback.print_exc()
+                
+            finally:
+                if 'scene' in locals():
+                    scene.cleanup()
+                time.sleep(1)  # Brief pause between scenes
     
     def cleanup_resources(self):
         if self.dialogue_manager:
@@ -110,12 +117,23 @@ if __name__ == "__main__":
                        help="NAO robot IP address")
     parser.add_argument("--mic", choices=["nao", "laptop"], default="nao",
                        help="Microphone: 'nao' for NAO mic, 'laptop' for laptop mic (default: nao)")
+    parser.add_argument('--mic-device', type=int, default=None,
+                        help='Audio device index for external microphone (use list-devices to see options)')
+    parser.add_argument('--list-devices', action='store_true',
+                        help='List available audio devices and exit')
     parser.add_argument("--camera", choices=["nao", "local"], default="local",
                        help="Camera: 'nao' for NAO camera, 'local' for laptop/iPhone (default: local)")
-    parser.add_argument("--scenes", nargs="+", default=["1", "2", "3"],
+    parser.add_argument("--scenes", nargs="+", default=["1", "2", "3", "4", "5", "6", "7"],
                        help="Which scenes to run (e.g., --scenes 1 2 3)")
     
     args = parser.parse_args()
+
+    if args.list_devices:
+        print("Available Audio Devices:")
+        print("=" * 50) 
+        print(sd.query_devices())
+        sys.exit(0)
+
     use_nao = (args.mode == "nao")
     use_nao_mic = (args.mic == "nao")
     use_nao_camera = (args.camera == "nao")

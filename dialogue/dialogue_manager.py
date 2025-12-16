@@ -41,6 +41,7 @@ class DialogueManager:
         self, 
         nao=None, 
         use_local_mic=False,
+        mic_device_index=None,
         camera_manager=None,
         pose_analyzer=None,
         system_prompt=None,
@@ -57,6 +58,7 @@ class DialogueManager:
         self.nao = nao
         self.nao_mic = nao.mic if nao else None
         self.use_local_mic = use_local_mic
+        self.mic_device_index = mic_device_index 
         
         self.camera_manager = camera_manager
         self.pose_analyzer = pose_analyzer
@@ -65,7 +67,10 @@ class DialogueManager:
             raise ImportError("Install: pip install sounddevice soundfile")
         
         if use_local_mic:
-            print("Using LAPTOP microphone")
+            if mic_device_index is not None:
+                print(f"Using LAPTOP microphone (device index: {mic_device_index})")
+            else:
+                print("Using LAPTOP microphone (default device)")
         elif self.nao_mic:
             print("Using NAO microphone")
 
@@ -113,8 +118,11 @@ class DialogueManager:
             chunk_duration = 0.1
             chunk_samples = int(sample_rate * chunk_duration)
             max_chunks = int(max_duration / chunk_duration)
+
+            device_info = sd.query_devices(self.mic_device_index, 'input')
+            num_channels = device_info['max_input_channels']
             
-            stream = sd.InputStream(samplerate=sample_rate, channels=1, dtype='int16')
+            stream = sd.InputStream(samplerate=sample_rate, channels=num_channels, dtype='int16', device=self.mic_device_index)
             
             with stream:
                 for i in range(max_chunks):
@@ -221,11 +229,15 @@ class DialogueManager:
         try:
             print(f"Recording for {duration} seconds... Speak now")
 
+            device_info = sd.query_devices(self.mic_device_index, 'input')
+            num_channels = device_info['max_input_channels']
+
             audio_data = sd.rec(
                 int(duration * 16000),
                 samplerate=16000,
-                channels=1,
-                dtype='int16'
+                channels=num_channels,
+                dtype='int16',
+                device=self.mic_device_index
             )
             sd.wait()
 
@@ -327,6 +339,9 @@ class DialogueManager:
             sample_rate = 16000
             chunk_duration = 0.1
             chunk_samples = int(sample_rate * chunk_duration)
+
+            device_info = sd.query_devices(self.mic_device_index, 'input')
+            num_channels = device_info['max_input_channels']
             
             all_chunks = []
             silence_chunks = 0
@@ -339,8 +354,9 @@ class DialogueManager:
             
             stream = sd.InputStream(
                 samplerate=sample_rate,
-                channels=1,
-                dtype='int16'
+                channels=num_channels,
+                dtype='int16',
+                device=self.mic_device_index
             )
             
             with stream:
